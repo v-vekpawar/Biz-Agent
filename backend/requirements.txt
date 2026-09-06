@@ -1,0 +1,21 @@
+# Phase 0 only needs fastapi + uvicorn + python-dotenv.
+# The rest are listed now so you install once and don't re-break your venv later in the build.
+
+fastapi
+uvicorn[standard]
+python-dotenv
+python-multipart
+
+# Phase 1+ (LangGraph pipeline)
+langgraph
+langchain-groq
+langchain-google-genai
+tavily-python
+
+# Phase 5 (RAG)
+chromadb
+sentence-transformers
+
+# Phase 7 (PDF export)
+weasyprint
+pypdf

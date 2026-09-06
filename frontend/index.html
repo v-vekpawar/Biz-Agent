@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Business Planning Agent — Phase 0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center">
+  <div class="bg-white shadow-md rounded-xl p-8 max-w-md w-full text-center space-y-4">
+    <h1 class="text-xl font-semibold text-slate-800">Phase 0 Checkpoint</h1>
+    <p class="text-slate-500 text-sm">
+      This page calls your FastAPI backend. If you see a green message below,
+      your backend and frontend are talking to each other.
+    </p>
+
+    <button
+      id="pingBtn"
+      class="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm hover:bg-slate-700 transition"
+    >
+      Ping backend
+    </button>
+
+    <p id="result" class="text-sm font-mono mt-4"></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
