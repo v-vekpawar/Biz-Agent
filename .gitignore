@@ -3,6 +3,7 @@ backend/.venv/
 backend/venv/
 __pycache__/
 *.pyc
+*.pdf
 
 # Secrets
 .env
@@ -11,6 +12,7 @@ backend/.env
 # Vector store / data (Phase 5+)
 backend/chroma_db/
 backend/uploads/
+backend/app/uploads/
 
 # OS
 .DS_Store
@@ -19,4 +21,6 @@ test_data/
 backend/chroma_store/
 backend/runs/
 backend/pdfs/
+backend/app/pdfs
 backend/phases_pipeline/
+backend/app/runs/

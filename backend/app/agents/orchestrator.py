@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..clients import llm
 from ..common import extract_text, invoke_with_retry, now_iso, strip_code_fence
+from ..state import AgentState
 from .specialists import SPECIALISTS
 
 ORCHESTRATOR_SYSTEM_PROMPT = """You are the orchestrator for a business planning system.

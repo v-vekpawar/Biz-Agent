@@ -17,7 +17,7 @@ def extract_file_text(path: str) -> str:
         reader = PdfReader(path)
         return "\n".join(page.extract_text() or "" for page in reader.pages)
 
-    with open(path, "r", encoding="utf-8", erros="ignore") as f:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
         return f.read()
 
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> List[str]:
@@ -47,7 +47,7 @@ def ingest_document(path: str, run_id: str) -> int:
         return 0
     
     collection = get_or_create_collection(run_id)
-    ids = [f"run_id"-{i} for i in range(len(chunks))]
+    ids = [f"run_{run_id}-{i}" for i in range(len(chunks))]
     metadatas = [{"source": os.path.basename(path), "chunk_index": i} for i in range(len(chunks))]
     collection.add(documents=chunks, ids=ids, metadatas=metadatas)
     print(f"[RAG] Ingested {len(chunks)} chunks from '{os.path.basename(path)}' "

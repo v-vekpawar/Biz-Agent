@@ -53,7 +53,7 @@ def run_specialist_with_tools(system_prompt: str, user_content: str, tools: List
         response = invoke_with_retry(llm_with_tools, messages)
 
         if not getattr(response, "tool_calls", None):
-            return extract_text(response), tools_calls_log
+            return extract_text(response), tool_calls_log
         
         messages.append(response)
         for call in response.tool_calls:
@@ -71,7 +71,7 @@ def run_specialist_with_tools(system_prompt: str, user_content: str, tools: List
 def make_specialist_node(name: str, role_description: str, use_web_search: bool):
     def node(state: AgentState) -> AgentState:
         step_num = len(state["reasoning_log"]) + 1
-        instruction = state["plan"].get("instruction", {}).get(name)
+        instruction = state["plan"].get("instructions", {}).get(name)
         
         if not instruction:
             print(f"[{name.upper()}] Skipped - not selected by orchestrator.")
@@ -132,7 +132,7 @@ def make_specialist_node(name: str, role_description: str, use_web_search: bool)
         output, tool_calls_log = run_specialist_with_tools(system_prompt, user_content, tools)
         duration = round(time.time() - start, 2)
 
-        outputs = dict(state["specailist_outputs"])
+        outputs = dict(state["specialist_outputs"])
         outputs[name] = output
 
         tools_used = sorted({c["tool"] for c in tool_calls_log})

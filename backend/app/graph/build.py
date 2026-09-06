@@ -5,7 +5,7 @@ Graph assembly: wires the orchestrator, specialist nodes, critic, and synthesize
 from langgraph.graph import END, StateGraph
 
 from ..agents.critic import critic_node
-from ..agents.orchestrator import orchestrator node
+from ..agents.orchestrator import orchestrator_node
 from ..agents.specialists import SPECIALISTS, make_specialist_node
 from ..agents.synthesizer import synthesizer_node
 from ..state import AgentState

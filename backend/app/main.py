@@ -12,10 +12,10 @@ Endpoints:
 """
 
 import os, threading, traceback, uuid
-from typing import Dict, optional
+from typing import Dict, Optional
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.middkeware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from .config import PDFS_DIR, UPLOADS_DIR
@@ -34,7 +34,7 @@ def _set_job(job_id: str, **updates) -> None:
         _jobs[job_id].update(updates)
 
 def _run_job(job_id: str, request: str, document_path: Optional[str]) -> None:
-    _set_job(job_id, status="runnning")
+    _set_job(job_id, status="running")
     try:
         result = run_once(request, document_path=document_path, run_id=job_id)
         record = build_run_record(result)
@@ -60,13 +60,13 @@ async def submit(background_tasks: BackgroundTasks, request: str = Form(...), do
 
     if document is not None:
         os.makedirs(UPLOADS_DIR, exist_ok=True)
-        ext = os.pat.splitext(document.filename or "")[1] or ".txt"
-        document_path = os.path.joun(UPLOADS_DIR, f"{job_id}{text}")
+        ext = os.path.splitext(document.filename or "")[1] or ".txt"
+        document_path = os.path.join(UPLOADS_DIR, f"{job_id}{ext}")
         with open(document_path, "wb") as f:
             f.write(await document.read())
     
     with _jobs_lock:
-        _jobs[job_id] = s{"status": "pending", "record": None, "error": None}
+        _jobs[job_id] = {"status": "pending", "record": None, "error": None}
     
     background_tasks.add_task(_run_job, job_id, request.strip(), document_path)
 
@@ -85,7 +85,7 @@ async def get_result(job_id: str):
     if job["status"] == "error":
         return {"job_id": job_id, "status": "error", "error": job["error"]}
     
-    return {"job_id": job_id, "Status": "done", **job["record"]}
+    return {"job_id": job_id, "status": "done", **job["record"]}
 
 @app.get("/result/{job_id}/pdf")
 async def get_result_pdf(job_id: str):
@@ -94,7 +94,7 @@ async def get_result_pdf(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id.")
     if job["status"] != "done":
-        raise HTTPException(status_code=409, detail=f"Job is not finished yet (status: {job["status"]}).")
+        raise HTTPException(status_code=409, detail=f"Job is not finished yet (status: {job['status']}).")
     
     pdf_path = os.path.join(PDFS_DIR, f"report_{job_id}.pdf")
     if not os.path.exists(pdf_path):

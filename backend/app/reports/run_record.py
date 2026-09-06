@@ -26,7 +26,7 @@ def save_run_record(state: AgentState) -> str:
     record = build_run_record(state)
     path = os.path.join(RUNS_DIR, f"run_{state['run_id']}.json")
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(record, f, indent=2. default=str)
+        json.dump(record, f, indent=2, default=str)
     return path
 
 def print_reasoning_log(state: AgentState) -> None:
@@ -42,7 +42,7 @@ def print_reasoning_log(state: AgentState) -> None:
         
         print(f"[{entry['step']}] {label} ({entry['duration_seconds']}s)")
         if entry["tools_used"]:
-            print(f"    tools used: {','.join(entry['tools_used'])} ({len(entry['tools_Calls'])} call(s))")
+            print(f"    tools used: {','.join(entry['tools_used'])} ({len(entry['tool_calls'])} call(s))")
         retry_info = entry.get("retry_info")
         if retry_info and retry_info.get("is_retry"):
             print(f"    retry attempt {retry_info['retry_number']} of {retry_info['max_retries']}")

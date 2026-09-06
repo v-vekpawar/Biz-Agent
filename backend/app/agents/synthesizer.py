@@ -43,7 +43,7 @@ market/financial/risk context before strategy, strategy before copy/ops executio
 
 def run_synthesizer(state: AgentState) -> Dict:
     parts = []
-    for name in state["plan"].get(specialists, []):
+    for name in state["plan"].get("specialists", []):
         output = state["specialist_outputs"].get(name)
         if output is None:
             continue
@@ -54,7 +54,7 @@ def run_synthesizer(state: AgentState) -> Dict:
     if not parts:
         return {
             "title": "No Report Generated",
-            "executive_summary": "No specialists were invoked for this request."
+            "executive_summary": "No specialists were invoked for this request.",
             "sections": [],
             "checklist": [],
         }
@@ -104,7 +104,7 @@ def render_markdown_report(report: Dict) -> str:
     return "\n".join(lines)
 
 def synthesizer_node(state: AgentState) -> AgentState:
-    print("[SYNTHESIZER] Combining specialist out[uts into final report...]")
+    print("[SYNTHESIZER] Combining specialist outputs into final report...]")
     start = time.time()
     report = run_synthesizer(state)
     duration = round(time.time() - start, 2)
@@ -112,11 +112,11 @@ def synthesizer_node(state: AgentState) -> AgentState:
 
     ran_specialists = [n for n in state["plan"].get("specialists", []) if n in state["specialist_outputs"]]
     log_entry = {
-        "step": len(state["reasoning_log"] + 1),
+        "step": len(state["reasoning_log"]) + 1,
         "node": "synthesizer",
         "role": "Synthesizer",
         "skipped": False,
-        "instruction_given": f"Combine verified outputs from: {ran_Specialists}",
+        "instruction_given": f"Combine verified outputs from: {ran_specialists}",
         "tools_used": [],
         "tool_calls": [],
         "output": report,
