@@ -29,6 +29,14 @@ def extract_text(response) -> str:
         return "".join(parts).strip()
     return str(content).strip()
 
+def strip_code_fence(raw: str) -> str:
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    return raw
+
 def _extract_retry_seconds(err: Exception) -> Optional[float]:
     """Providers often say 'please try again in 1.275s' in the error message —
     use that exact figure when present instead of guessing a backoff."""
