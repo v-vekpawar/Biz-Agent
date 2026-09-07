@@ -1,28 +1,241 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Business Planning Agent — Phase 0</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Desk — Multi-Agent Business Planning</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Fraunces"', 'serif'],
+          body: ['"Work Sans"', 'sans-serif'],
+          mono: ['"IBM Plex Mono"', 'monospace'],
+        },
+        colors: {
+          paper: '#f2ede3',
+          ink: '#211d1a',
+          ledger: '#1c2a24',
+          brass: '#a9793a',
+          brassdark: '#7c5626',
+        },
+      },
+    },
+  };
+</script>
+
+<style>
+  body {
+    background-color: #f2ede3;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(33,29,26,0.08) 1px, transparent 0);
+    background-size: 22px 22px;
+  }
+  .stamp {
+    transform: rotate(-3deg);
+  }
+  .paper-card {
+    background: #fbf8f1;
+    box-shadow: 0 1px 0 rgba(33,29,26,0.05), 0 12px 24px -12px rgba(33,29,26,0.25);
+    border: 1px solid rgba(33,29,26,0.12);
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(33,29,26,0.2); border-radius: 6px; }
+
+  .tab-btn[aria-selected="true"] {
+    color: #f2ede3;
+    background-color: #211d1a;
+  }
+  .tab-btn[aria-selected="false"] {
+    color: #211d1a;
+    background-color: transparent;
+  }
+
+  .role-rail { border-left-width: 4px; }
+
+  .checklist-item input:checked + span {
+    text-decoration: line-through;
+    opacity: 0.55;
+  }
+
+  .spinner {
+    border: 2.5px solid rgba(33,29,26,0.15);
+    border-top-color: #211d1a;
+    border-radius: 9999px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .pulse-dot {
+    animation: pulse-dot 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] .chevron { transform: rotate(90deg); }
+  .chevron { transition: transform 0.15s ease; }
+</style>
 </head>
-<body class="bg-slate-50 min-h-screen flex items-center justify-center">
-  <div class="bg-white shadow-md rounded-xl p-8 max-w-md w-full text-center space-y-4">
-    <h1 class="text-xl font-semibold text-slate-800">Phase 0 Checkpoint</h1>
-    <p class="text-slate-500 text-sm">
-      This page calls your FastAPI backend. If you see a green message below,
-      your backend and frontend are talking to each other.
+
+<body class="min-h-screen font-body text-ink">
+
+  <!-- ===================== HEADER ===================== -->
+  <header class="border-b-2 border-ink/80 bg-paper/95 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-5xl mx-auto px-5 sm:px-8 py-4 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-full bg-ink text-paper grid place-items-center font-display font-semibold text-sm stamp select-none">
+          §9
+        </div>
+        <div>
+          <h1 class="font-display text-xl sm:text-2xl leading-none tracking-tight">The Desk</h1>
+          <p class="text-[11px] sm:text-xs uppercase tracking-[0.18em] text-ink/50 font-mono mt-0.5">
+            autonomous business-planning agents
+          </p>
+        </div>
+      </div>
+
+      <button id="settingsToggle" type="button"
+        class="text-xs font-mono uppercase tracking-wide border border-ink/30 rounded-full px-3 py-1.5 hover:bg-ink hover:text-paper transition-colors">
+        Backend ⚙
+      </button>
+    </div>
+
+    <!-- settings drawer -->
+    <div id="settingsDrawer" class="hidden border-t border-ink/15 bg-paper">
+      <div class="max-w-5xl mx-auto px-5 sm:px-8 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
+        <label for="apiBaseInput" class="text-xs font-mono uppercase tracking-wide text-ink/60 whitespace-nowrap">
+          API base URL
+        </label>
+        <input id="apiBaseInput" type="text" placeholder="http://localhost:8000"
+          class="flex-1 bg-white border border-ink/25 rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brass/60">
+        <button id="apiBaseSave" type="button"
+          class="text-xs font-mono uppercase tracking-wide bg-ink text-paper rounded px-3 py-1.5 hover:bg-brassdark transition-colors">
+          Save
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-5 sm:px-8 py-8 sm:py-10 space-y-8">
+
+    <!-- ===================== REQUEST FORM ===================== -->
+    <section id="formSection" class="paper-card rounded-2xl p-5 sm:p-8">
+      <div class="flex items-baseline justify-between flex-wrap gap-2 mb-1">
+        <h2 class="font-display text-2xl sm:text-3xl">File a request</h2>
+        <span class="text-xs font-mono text-ink/45">market · finance · risk · strategy · copy · ops</span>
+      </div>
+      <p class="text-sm text-ink/60 mb-6 max-w-2xl">
+        Describe a business or planning problem in plain language. An orchestrator agent will decide
+        which specialists to bring onto the case, run them with real tools, verify their work, and
+        hand back one synthesized report.
+      </p>
+
+      <form id="requestForm" class="space-y-5">
+        <div>
+          <label for="requestText" class="block text-xs font-mono uppercase tracking-wide text-ink/60 mb-1.5">
+            The request
+          </label>
+          <textarea id="requestText" name="request" rows="4" required
+            placeholder="e.g. Plan a go-to-market strategy for a subscription meal-kit brand targeting college students"
+            class="w-full bg-white border border-ink/25 rounded-lg px-4 py-3 text-[15px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-brass/60 resize-y"></textarea>
+        </div>
+
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <label for="documentFile"
+            class="inline-flex items-center gap-2 text-sm border border-dashed border-ink/35 rounded-lg px-4 py-2.5 cursor-pointer hover:border-ink/60 hover:bg-ink/5 transition-colors w-full sm:w-auto">
+            <span class="font-mono text-lg leading-none">＋</span>
+            <span id="fileLabel" class="truncate">Attach a document <span class="text-ink/45">(optional, PDF/TXT)</span></span>
+          </label>
+          <input id="documentFile" name="document" type="file" accept=".pdf,.txt,.md" class="hidden">
+
+          <button id="submitBtn" type="submit"
+            class="sm:ml-auto inline-flex items-center justify-center gap-2 bg-ink text-paper font-mono uppercase tracking-wide text-sm px-6 py-3 rounded-lg hover:bg-brassdark transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            Dispatch agents →
+          </button>
+        </div>
+      </form>
+
+      <p id="formError" class="hidden mt-4 text-sm text-red-800 bg-red-100 border border-red-300 rounded-lg px-4 py-2.5"></p>
+    </section>
+
+    <!-- ===================== STATUS ===================== -->
+    <section id="statusSection" class="hidden paper-card rounded-2xl p-5 sm:p-8">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-5">
+        <h2 class="font-display text-xl sm:text-2xl">Case status</h2>
+        <span id="jobIdBadge" class="text-xs font-mono text-ink/50 bg-ink/5 rounded-full px-3 py-1"></span>
+      </div>
+
+      <div class="flex items-center gap-3 sm:gap-6">
+        <div class="flex-1 flex items-center gap-2 sm:gap-3">
+          <div id="stepSubmitted" class="step-node flex-1 text-center">
+            <div class="mx-auto w-3 h-3 rounded-full bg-ink mb-1.5"></div>
+            <div class="text-[11px] font-mono uppercase tracking-wide text-ink/70">Submitted</div>
+          </div>
+          <div class="flex-1 h-[2px] bg-ink/20 relative -mt-4">
+            <div id="progressLine1" class="h-full bg-ink/70 w-0 transition-all duration-500"></div>
+          </div>
+          <div id="stepRunning" class="step-node flex-1 text-center">
+            <div class="mx-auto w-3 h-3 rounded-full bg-ink/25 mb-1.5"></div>
+            <div class="text-[11px] font-mono uppercase tracking-wide text-ink/40">Agents working</div>
+          </div>
+          <div class="flex-1 h-[2px] bg-ink/20 relative -mt-4">
+            <div id="progressLine2" class="h-full bg-ink/70 w-0 transition-all duration-500"></div>
+          </div>
+          <div id="stepDone" class="step-node flex-1 text-center">
+            <div class="mx-auto w-3 h-3 rounded-full bg-ink/25 mb-1.5"></div>
+            <div class="text-[11px] font-mono uppercase tracking-wide text-ink/40">Report ready</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="statusLine" class="mt-6 flex items-center gap-3 text-sm text-ink/70">
+        <div class="spinner w-4 h-4"></div>
+        <span id="statusMessage">Queued — waiting for a worker to pick this up…</span>
+        <span id="elapsedTime" class="ml-auto font-mono text-xs text-ink/40"></span>
+      </div>
+
+      <p id="statusError" class="hidden mt-4 text-sm text-red-800 bg-red-100 border border-red-300 rounded-lg px-4 py-2.5"></p>
+    </section>
+
+    <!-- ===================== RESULTS ===================== -->
+    <section id="resultsSection" class="hidden space-y-4">
+
+      <div class="flex items-center gap-1 border-b border-ink/20">
+        <button data-tab="report" class="tab-btn font-mono text-sm uppercase tracking-wide px-5 py-2.5 rounded-t-lg" aria-selected="true">
+          Report
+        </button>
+        <button data-tab="log" class="tab-btn font-mono text-sm uppercase tracking-wide px-5 py-2.5 rounded-t-lg" aria-selected="false">
+          Reasoning log
+        </button>
+        <a id="pdfLink" href="#" target="_blank" rel="noopener"
+          class="ml-auto mb-1 inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wide border border-ink/30 rounded-full px-3.5 py-1.5 hover:bg-ink hover:text-paper transition-colors">
+          ⬇ Download PDF
+        </a>
+      </div>
+
+      <div id="tabReport" class="tab-panel"></div>
+      <div id="tabLog" class="tab-panel hidden"></div>
+    </section>
+
+  </main>
+
+  <footer class="max-w-5xl mx-auto px-5 sm:px-8 pb-10 pt-4">
+    <p class="text-[11px] font-mono text-ink/35 text-center">
+      orchestrator → specialists (tools) → critic/retry → synthesizer · phase 9 frontend
     </p>
-
-    <button
-      id="pingBtn"
-      class="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm hover:bg-slate-700 transition"
-    >
-      Ping backend
-    </button>
-
-    <p id="result" class="text-sm font-mono mt-4"></p>
-  </div>
+  </footer>
 
   <script src="app.js"></script>
 </body>
