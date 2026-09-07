@@ -18,13 +18,13 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from .config import PDFS_DIR, UPLOADS_DIR
+from .config import CORS_ORIGINS, PDFS_DIR, UPLOADS_DIR
 from .pipeline import run_once
 from .reports import build_run_record
 
 app = FastAPI(title="Multi-Agent Business Planning API")
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],)
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],)
 
 _jobs: Dict[str, Dict] = {}
 _jobs_lock = threading.Lock()
