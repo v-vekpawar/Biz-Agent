@@ -38,6 +38,25 @@ def _get_embedding_fn():
 def get_or_create_collection(run_id: str):
     return _get_chroma_client().get_or_create_collection(name=f"run_{run_id}", embedding_function=_get_embedding_fn())
 
+def delete_collection(run_id: str):
+    """Delete this run's ChromaDB collection, if it exists.
+ 
+    A run only ever creates a collection if a document was uploaded
+    (ingest_document / make_retrieve_tool are the only two callers of
+    get_or_create_collection), so most runs have nothing to delete — that's
+    expected, not an error. Returns True if a collection was actually
+    deleted, False if there was nothing to clean up.
+    """
+    try:
+        _get_chroma_client().delete_collection(name=f"run_{run_id}")
+        print(f"[RAG] Deleted collection run_{run_id}.")
+        return True
+    except Exception as e:
+        if "does not exist" in str(e).lower():
+            return False
+        print(f"[RAG] Could not delete collection run_{run_id}: {e}")
+        return False
+
 def make_retrieve_tool(run_id: str):
     """Build a retrieve_documents tool bound to this specific run's collection."""
     collection = get_or_create_collection(run_id)

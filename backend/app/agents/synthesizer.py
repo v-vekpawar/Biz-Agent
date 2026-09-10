@@ -105,9 +105,9 @@ def render_markdown_report(report: Dict) -> str:
 
 def synthesizer_node(state: AgentState) -> AgentState:
     print("[SYNTHESIZER] Combining specialist outputs into final report...]")
-    start = time.time()
+    start = time.monotonic()
     report = run_synthesizer(state)
-    duration = round(time.time() - start, 2)
+    duration = round(time.monotonic() - start, 2)
     markdown = render_markdown_report(report)
 
     ran_specialists = [n for n in state["plan"].get("specialists", []) if n in state["specialist_outputs"]]

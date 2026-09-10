@@ -21,7 +21,7 @@ SPECIALISTS: Dict[str, Tuple[str, bool]] = {
         True, 
     ),
     "financial_analyst": (
-        "Financial Analyst on a business plannign team, focused on cost estimates, budget breakdown, and ROI reasoning", 
+        "Financial Analyst on a business planning team, focused on cost estimates, budget breakdown, and ROI reasoning",
         False, 
     ),
     "risk_assessor": (
@@ -80,7 +80,7 @@ def make_specialist_node(name: str, role_description: str, use_web_search: bool)
                 "node": name,
                 "role": role_description,
                 "skipped": True,
-                "skip_reason": "No instruction found fo this list at execution time.",
+                "skip_reason": "No instruction found for this specialist at execution time.",
                 "instructions_given": None,
                 "tools_used": [],
                 "tool_calls": [],
@@ -128,9 +128,9 @@ def make_specialist_node(name: str, role_description: str, use_web_search: bool)
         )
             instructions_given = f"{instruction}\n[Retry feedback incorporated: {feedback}]"
 
-        start = time.time()
+        start = time.monotonic()
         output, tool_calls_log = run_specialist_with_tools(system_prompt, user_content, tools)
-        duration = round(time.time() - start, 2)
+        duration = round(time.monotonic() - start, 2)
 
         outputs = dict(state["specialist_outputs"])
         outputs[name] = output

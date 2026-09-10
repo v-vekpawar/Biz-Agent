@@ -46,7 +46,7 @@ Only include keys in "instructions" for specialists you actually chose to
 invoke, and list them in "specialists" in the order they should run."""
 
 def orchestrator_node(state: AgentState) -> AgentState:
-    start = time.time()
+    start = time.monotonic()
     response = invoke_with_retry(llm, [SystemMessage(content=ORCHESTRATOR_SYSTEM_PROMPT), HumanMessage(content=f"User request: {state['request']}"), ], )
     raw = strip_code_fence(extract_text(response))
 
@@ -72,7 +72,7 @@ def orchestrator_node(state: AgentState) -> AgentState:
         "output": plan,
         "critic_verdict": None,
         "retry_info": None,
-        "duration_seconds": round(time.time() - start, 2),
+        "duration_seconds": round(time.monotonic() - start, 2),
         "timestamp": now_iso(),
     }
     new_log = [orchestrator_entry]
