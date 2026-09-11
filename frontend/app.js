@@ -12,7 +12,6 @@
 //   GET  /result/{job_id}/pdf  -> PDF file (only valid once status === "done")
 // ============================================================================
 
-const DEFAULT_API_BASE = "http://localhost:8000";
 const POLL_INTERVAL_MS = 2500;
 const POLL_TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes — generous for a cold free-tier run
 
