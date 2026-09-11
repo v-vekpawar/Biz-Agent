@@ -60,6 +60,7 @@ def invoke_with_retry(model, messages, max_retries: int = 4, base_delay: float =
         except Exception as e:
             msg = str(e)
             is_rate_limit = ("429" in msg or "rate_limit" in msg.lower() or "resourceexhausted" in type(e).__name__.lower() or "ratelimiterror" in type(e).__name__.lower())
+            last_err = e
             if not is_rate_limit or attempt == max_retries:
                 break
             wait = _extract_retry_seconds(e) or (base_delay * (2 ** attempt))
@@ -67,7 +68,6 @@ def invoke_with_retry(model, messages, max_retries: int = 4, base_delay: float =
             print(f"[RATE LIMIT] Hit a provider rate limit, waiting {wait:.1f}s "
                   f"before retry (attempt {attempt + 1}/{max_retries})...", flush=True)
             time.sleep(wait)
-            last_err = e
 
     if fallback_model is not None:
         print(f"[FALLBACK] Primary model failed ({last_err}); switching to fallback model.", flush=True)

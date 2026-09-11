@@ -7,7 +7,7 @@ import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from ..clients import llm
+from ..clients import llm, groq_fallback_llm
 from ..common import extract_text, invoke_with_retry, now_iso, strip_code_fence
 from ..state import AgentState
 from .specialists import SPECIALISTS
@@ -47,7 +47,7 @@ invoke, and list them in "specialists" in the order they should run."""
 
 def orchestrator_node(state: AgentState) -> AgentState:
     start = time.monotonic()
-    response = invoke_with_retry(llm, [SystemMessage(content=ORCHESTRATOR_SYSTEM_PROMPT), HumanMessage(content=f"User request: {state['request']}"), ], )
+    response = invoke_with_retry(llm, [SystemMessage(content=ORCHESTRATOR_SYSTEM_PROMPT), HumanMessage(content=f"User request: {state['request']}"), ],fallback_model=groq_fallback_llm )
     raw = strip_code_fence(extract_text(response))
 
     try:
