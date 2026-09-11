@@ -32,7 +32,7 @@ const FALLBACK_ROLE_STYLE = { label: "Agent", icon: "•", border: "border-ink/4
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let apiBase = localStorage.getItem("theDesk.apiBase") || DEFAULT_API_BASE;
+
 let currentJobId = null;
 let pollHandle = null;
 let pollStartedAt = null;
@@ -42,11 +42,6 @@ let elapsedHandle = null;
 // DOM refs
 // ---------------------------------------------------------------------------
 const el = (id) => document.getElementById(id);
-
-const settingsToggle = el("settingsToggle");
-const settingsDrawer = el("settingsDrawer");
-const apiBaseInput = el("apiBaseInput");
-const apiBaseSave = el("apiBaseSave");
 
 const requestForm = el("requestForm");
 const requestText = el("requestText");
@@ -109,25 +104,8 @@ function fmtSeconds(totalSeconds) {
 }
 
 function apiUrl(path) {
-  return apiBase.replace(/\/+$/, "") + path;
+  return API_BASE.replace(/\/+$/, "") + path;
 }
-
-// ---------------------------------------------------------------------------
-// Settings drawer
-// ---------------------------------------------------------------------------
-apiBaseInput.value = apiBase;
-
-settingsToggle.addEventListener("click", () => {
-  settingsDrawer.classList.toggle("hidden");
-});
-
-apiBaseSave.addEventListener("click", () => {
-  const val = apiBaseInput.value.trim();
-  if (!val) return;
-  apiBase = val;
-  localStorage.setItem("theDesk.apiBase", apiBase);
-  settingsDrawer.classList.add("hidden");
-});
 
 // ---------------------------------------------------------------------------
 // File input label
@@ -172,8 +150,7 @@ requestForm.addEventListener("submit", async (evt) => {
   } catch (err) {
     showError(
       formError,
-      `Couldn't reach the backend at ${apiBase}. ${err.message || err}. ` +
-      `Check the API base URL (⚙ above) and that the backend is running and reachable.`
+      `Couldn't reach the backend at ${API_BASE}. ${err.message || err}.`
     );
   } finally {
     setSubmitting(false);
@@ -260,7 +237,7 @@ async function pollOnce(jobId) {
     }
   } catch (err) {
     stopPolling();
-    failStatus(`Lost contact with the backend at ${apiBase}. ${err.message || err}`);
+       failStatus(`Lost contact with the backend at ${API_BASE}. ${err.message || err}`);
   }
 }
 
