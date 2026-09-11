@@ -49,7 +49,7 @@ def _extract_retry_seconds(err: Exception) -> Optional[float]:
             return None
     return None
 
-def invoke_with_retry(model, messages, max_retries: int = 4, base_delay: float = 3.0):
+def invoke_with_retry(model, messages, max_retries: int = 4, base_delay: float = 3.0, fallback_model=None):
     """Invoke an LLM with retry/backoff on rate-limit (429) errors."""
 
     last_err = None
@@ -68,5 +68,9 @@ def invoke_with_retry(model, messages, max_retries: int = 4, base_delay: float =
                   f"before retry (attempt {attempt + 1}/{max_retries})...", flush=True)
             time.sleep(wait)
             last_err = e
+
+    if fallback_model is not None:
+        print(f"[FALLBACK] Primary model failed ({last_err}); switching to fallback model.", flush=True)
+        return invoke_with_retry(fallback_model, messages, max_retries=max_retries, base_delay=base_delay)
 
     raise last_err

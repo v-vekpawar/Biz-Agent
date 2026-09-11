@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
-from ..clients import llm
+from ..clients import llm, groq_fallback_llm
 from ..common import extract_text, invoke_with_retry, now_iso
 from ..config import MAX_RETRIES
 from ..rag import make_retrieve_tool
@@ -45,12 +45,13 @@ SPECIALISTS: Dict[str, Tuple[str, bool]] = {
 def run_specialist_with_tools(system_prompt: str, user_content: str, tools: List, max_iterations: int =3):
     """Returns (output_text, tool_calls_log) - tool_calls_log records every tool call made (name, args, truncated result preview) for the reasoning log."""
     llm_with_tools = llm.bind_tools(tools) if tools else llm
+    fallback_with_tools = groq_fallback_llm.bind_tools(tools) if tools else groq_fallback_llm
     tool_map = {t.name: t for t in tools}
     messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_content)]
     tool_calls_log: List[Dict] = []
 
     for _ in range(max_iterations):
-        response = invoke_with_retry(llm_with_tools, messages)
+        response = invoke_with_retry(llm_with_tools, messages, fallback_model=fallback_with_tools)
 
         if not getattr(response, "tool_calls", None):
             return extract_text(response), tool_calls_log
@@ -65,7 +66,8 @@ def run_specialist_with_tools(system_prompt: str, user_content: str, tools: List
             messages.append(ToolMessage(content=result_str, tool_call_id=call["id"]))
     
     no_tools_llm = llm.bind_tools(tools, tool_choice="none") if tools else llm
-    final = invoke_with_retry(no_tools_llm, messages + [HumanMessage(content="Based on everything above, give your final answer now, without calling any more tools.")])    
+    no_tools_fallback = groq_fallback_llm.bind_tools(tools, tool_choice="none") if tools else groq_fallback_llm
+    final = invoke_with_retry(no_tools_llm, messages + [HumanMessage(content="Based on everything above, give your final answer now, without calling any more tools.")], fallback_model=no_tools_fallback)    
     return extract_text(final), tool_calls_log
 
 def make_specialist_node(name: str, role_description: str, use_web_search: bool):

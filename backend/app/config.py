@@ -23,6 +23,8 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 TAVILIY_API_KEY = os.getenv("TAVILY_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # --- CORS ---
 # Comma-separated list of allowed frontend origins,
