@@ -26,6 +26,13 @@ TAVILIY_API_KEY = os.getenv("TAVILY_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+OPENROUTER_FALLBACK_MODELS = [
+    m.strip() for m in os.getenv(
+        "OPENROUTER_FALLBACK_MODELS",
+        f"{OPENROUTER_MODEL},nvidia/nemotron-3.5-lightning:free,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    ).split(",") if m.strip()
+]
+
 # --- CORS ---
 # Comma-separated list of allowed frontend origins,
 _DEFAULT_CORS_ORIGINS = (

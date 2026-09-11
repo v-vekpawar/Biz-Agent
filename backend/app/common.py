@@ -61,7 +61,7 @@ def invoke_with_retry(model, messages, max_retries: int = 4, base_delay: float =
             msg = str(e)
             is_rate_limit = ("429" in msg or "rate_limit" in msg.lower() or "resourceexhausted" in type(e).__name__.lower() or "ratelimiterror" in type(e).__name__.lower())
             if not is_rate_limit or attempt == max_retries:
-                raise
+                break
             wait = _extract_retry_seconds(e) or (base_delay * (2 ** attempt))
             wait = min(wait, 30.0) + 0.5
             print(f"[RATE LIMIT] Hit a provider rate limit, waiting {wait:.1f}s "

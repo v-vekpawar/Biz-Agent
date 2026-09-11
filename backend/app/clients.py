@@ -14,6 +14,7 @@ llm = ChatOpenAI(
     temperature=0.3,
     api_key=config.OPENROUTER_API_KEY,
     base_url="https://openrouter.ai/api/v1",
+    extra_body={"models": config.OPENROUTER_FALLBACK_MODELS},
 )
 
 groq_fallback_llm = ChatGroq(model=config.GROQ_MODEL, temperature=0.3, api_key=config.GROQ_API_KEY)
