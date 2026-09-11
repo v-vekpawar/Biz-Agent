@@ -13,7 +13,7 @@
 // ============================================================================
 
 const POLL_INTERVAL_MS = 2500;
-const POLL_TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes — generous for a cold free-tier run
+const POLL_TIMEOUT_MS = 12 * 60 * 1000; // free-tier + retries can run long
 
 // Visual identity per agent node, keyed by the backend's `node` field.
 const ROLE_STYLES = {
