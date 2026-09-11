@@ -64,8 +64,8 @@ def run_specialist_with_tools(system_prompt: str, user_content: str, tools: List
             tool_calls_log.append({"tool": call["name"], "args": call["args"], "result_preview": result_str[:300], })
             messages.append(ToolMessage(content=result_str, tool_call_id=call["id"]))
     
-    final = invoke_with_retry(llm, messages + [HumanMessage(content="Based on everything above, give your final answer now, without calling any more tools.")])
-    
+    no_tools_llm = llm.bind_tools(tools, tool_choice="none") if tools else llm
+    final = invoke_with_retry(no_tools_llm, messages + [HumanMessage(content="Based on everything above, give your final answer now, without calling any more tools.")])    
     return extract_text(final), tool_calls_log
 
 def make_specialist_node(name: str, role_description: str, use_web_search: bool):
