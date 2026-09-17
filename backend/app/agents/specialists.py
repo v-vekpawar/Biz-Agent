@@ -42,7 +42,7 @@ SPECIALISTS: Dict[str, Tuple[str, bool]] = {
     ),
 }
 
-def run_specialist_with_tools(system_prompt: str, user_content: str, tools: List, max_iterations: int =3):
+def run_specialist_with_tools(system_prompt: str, user_content: str, tools: List, max_iterations: int =2):
     """Returns (output_text, tool_calls_log) - tool_calls_log records every tool call made (name, args, truncated result preview) for the reasoning log."""
     llm_with_tools = llm.bind_tools(tools) if tools else llm
     fallback_with_tools = groq_fallback_llm.bind_tools(tools) if tools else groq_fallback_llm
@@ -109,7 +109,17 @@ def make_specialist_node(name: str, role_description: str, use_web_search: bool)
         if has_doc:
             tools = tools + [make_retrieve_tool(state["run_id"])]
         
-        system_prompt = f"You are the {role_description}. Be concise, concrete, and specific to the request — no generic filler."
+        system_prompt = (
+            f"You are the {role_description}. Be concise, concrete, and specific to the request — "
+            "no generic filler.\n\n"
+            "Output format (strict):\n"
+            "- Write an internal briefing note for another AI agent that will synthesize your output "
+            "with others into a final report — this is NOT the final deliverable, so skip framing "
+            "like intros/conclusions.\n"
+            "- Plain prose and short bullet points only. Do NOT use Markdown headers (#, ##), bold/italic "
+            "markup, or Markdown tables.\n"
+            "- Target 200-350 words. Be substantive but do not pad."
+        )
         if use_web_search:
             system_prompt += " Use the web_search tool for current market data, trends, competitor names, or numbers you're not certain about. Don't fabricate specific statistics."
         

@@ -5,7 +5,7 @@ Synthesizer node: combines verified specialist outputs into one structured repor
 import json, time
 from typing import Dict
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ..clients import synthesizer_llm
 from ..common import extract_text, invoke_with_retry, now_iso, strip_code_fence
@@ -60,17 +60,36 @@ def run_synthesizer(state: AgentState) -> Dict:
         }
     
     user_content = f"Original business request: {state['request']}\n\n" + "\n\n".join(parts)
-    response = invoke_with_retry(synthesizer_llm, [SystemMessage(content=SYNTHESIZER_SYSTEM_PROMPT), HumanMessage(content=user_content)],)
+    messages = [SystemMessage(content=SYNTHESIZER_SYSTEM_PROMPT), HumanMessage(content=user_content)]
+    response = invoke_with_retry(synthesizer_llm, messages)
     raw = strip_code_fence(extract_text(response))
 
+    parse_error = None
     try:
         report = json.loads(raw)
-        report.setdefault("title","Business Plan Report")
-        report.setdefault("executive_summary","")
-        report.setdefault("sections","")
-        report.setdefault("checklist",[])
-    except json.JSONDecodeError:
-        print(f"[SYNTHESIZER] Could not parse report JSON, falling back to raw concatenation.\nRaw response was:\n{raw}\n")
+    except json.JSONDecodeError as e:
+        parse_error = e
+        report = None
+
+    if report is None:
+        print(f"[SYNTHESIZER] Could not parse report JSON ({parse_error}), retrying once with self-repair.\nRaw response was:\n{raw}\n")
+        repair_messages = messages + [
+            AIMessage(content=raw),
+            HumanMessage(content=(
+                "That response was not valid JSON and failed to parse with this error: "
+                f"{parse_error}\n\nReturn ONLY corrected, valid JSON in the exact shape specified "
+                "above — no markdown code fences, no preamble, no trailing commentary."
+            )),
+        ]
+        try:
+            repair_response = invoke_with_retry(synthesizer_llm, repair_messages)
+            repair_raw = strip_code_fence(extract_text(repair_response))
+            report = json.loads(repair_raw)
+        except json.JSONDecodeError as e2:
+            print(f"[SYNTHESIZER] Self-repair retry also failed to parse ({e2}), falling back to raw concatenation.\nRaw response was:\n{repair_raw}\n")
+            report = None
+
+    if report is None:
         report = {
             "title": "Business Plan Report (fallback format)",
             "executive_summary": "The synthesizer's structured output could not be parsed; showing raw specialist outputs instead.",
@@ -81,7 +100,12 @@ def run_synthesizer(state: AgentState) -> Dict:
             ],
             "checklist": [],
         }
-    
+    else:
+        report.setdefault("title", "Business Plan Report")
+        report.setdefault("executive_summary", "")
+        report.setdefault("sections", [])
+        report.setdefault("checklist", [])
+
     return report
 
 def render_markdown_report(report: Dict) -> str:
