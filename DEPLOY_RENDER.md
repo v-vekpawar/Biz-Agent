@@ -17,7 +17,7 @@ Create a PostgreSQL project in Neon and copy its connection string. Use the pool
 2. Connect `v-vekpawar/Biz-Agent`.
 3. Select the `main` branch and approve `render.yaml`.
 4. In the service environment settings, add `DATABASE_URL` using the Neon connection string.
-5. Add the provider keys you have (Google, Groq, OpenRouter, Tavily). Cerebras is optional.
+5. Add the provider keys you have (Google, Groq, OpenRouter, Tavily). Cerebras is optional. The Google model is explicitly set to `gemini-3.5-flash-lite`.
 6. Deploy. Render health check uses `/health`.
 
 The Docker image starts one Uvicorn worker and caps concurrent requests to reduce memory use. Render Free services can sleep when idle; do not use artificial ping/keep-alive services to evade this.
