@@ -3,7 +3,7 @@ services:
     name: biz-agent
     runtime: docker
     plan: free
-    branch: main
+    branch: deploy/render-neon
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
