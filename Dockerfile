@@ -20,4 +20,4 @@ ENV BIZAGENT_ENV=production \
     PORT=10000
 EXPOSE 10000
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1 --limit-concurrency 20 --timeout-keep-alive 5"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1 --limit-concurrency 8 --timeout-keep-alive 5"]
