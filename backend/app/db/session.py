@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 _DEFAULT_SQLITE_URL = f"sqlite:///{(_BACKEND_DIR / 'bizagent.db').as_posix()}"
@@ -29,11 +30,11 @@ def normalize_database_url(raw_url: str) -> str:
     if path_part in (":memory:", ""):
         return value
     path = Path(path_part)
-    if path.is_absolute() or (len(path_part) > 1 and path_part[0] in ("/", "\\\\")):
+    if path.is_absolute() or (len(path_part) > 1 and path_part[0] in ("/", "\\")):
         return f"sqlite:///{path.as_posix()}"
     if path.exists():
         return f"sqlite:///{path.resolve().as_posix()}"
-    clean_part = path_part.replace("\\\\", "/")
+    clean_part = path_part.replace("\\", "/")
     if clean_part.startswith("backend/"):
         sub_rel = clean_part[8:]
         if (_BACKEND_DIR / sub_rel).exists():
@@ -53,16 +54,14 @@ def is_sqlite_url(url: str) -> bool:
 def make_engine(url: str | None = None) -> Engine:
     engine_url = normalize_database_url(url or DATABASE_URL)
     sqlite_backend = is_sqlite_url(engine_url)
-    options = {
-        "pool_pre_ping": True,
-    }
+    options = {"pool_pre_ping": True}
     if sqlite_backend:
         options["connect_args"] = {"check_same_thread": False}
         if engine_url.endswith(":memory:"):
-            options["poolclass"] = __import__("sqlalchemy").pool.StaticPool
+            options["poolclass"] = StaticPool
     else:
-        # Small connection footprint for Render's low-memory free instance and
-        # Neon connection limits. NullPool is intentionally not used per request.
+        # Keep the connection footprint small for Render's low-memory service
+        # and the database provider's connection limits.
         options.update(pool_size=2, max_overflow=1, pool_timeout=15, pool_recycle=300)
 
     engine = create_engine(engine_url, **options)
