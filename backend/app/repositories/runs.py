@@ -86,7 +86,12 @@ class RunRepository:
         return run
 
     def fail(self, run_id: int, error_summary: str) -> InvestigationRun:
-        """queued|running -> failed. Failure carries a persisted error summary."""
+        """queued|running -> failed. Failure carries a persisted error summary.
+
+        Roll back first so this transition also works after a failed database
+        flush in the operation that caused the investigation to fail.
+        """
+        self._s.rollback()
         run = self.require(run_id)
         self._transition(run, allowed=frozenset({RunStatus.QUEUED, RunStatus.RUNNING}), action="fail")
         run.status = RunStatus.FAILED

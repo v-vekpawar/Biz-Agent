@@ -65,6 +65,13 @@ class ScanRepository:
         self._s.commit()
 
     def fail(self, job: ScanJob, error: str) -> None:
+        # A failed INSERT/UPDATE leaves the SQLAlchemy transaction unusable.
+        # Roll it back and reload the job before persisting the terminal state.
+        job_id = job.id
+        self._s.rollback()
+        job = self._s.get(ScanJob, job_id)
+        if job is None:
+            return
         job.status = ScanStatus.FAILED
         job.error = error[:2000]
         job.finished_at = _now()

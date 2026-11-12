@@ -158,7 +158,7 @@ class Evidence(Base):
     )
 
     # Source metadata: missing metadata stays missing (never invented).
-    source_title: Mapped[str] = mapped_column(String(300), nullable=False)
+    source_title: Mapped[str] = mapped_column(Text, nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(1000))
     source_type: Mapped[str | None] = mapped_column(String(100))  # e.g. news, vendor page, forum, report
     publisher: Mapped[str | None] = mapped_column(String(200))
