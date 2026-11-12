@@ -15,7 +15,10 @@ WORKDIR /srv/backend
 RUN useradd --create-home appuser
 USER appuser
 
-ENV BIZAGENT_ENV=production \
+# Writable ephemeral defaults for local docker run; Render overrides DATABASE_URL
+# with Neon and uses /tmp only for transient uploaded source files.
+ENV DATABASE_URL=sqlite:////tmp/bizagent.db \
+    BIZAGENT_ENV=production \
     BIZAGENT_UPLOADS_DIR=/tmp/bizagent-uploads \
     PORT=10000
 EXPOSE 10000
