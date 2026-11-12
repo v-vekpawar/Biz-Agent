@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: biz-agent
+    runtime: docker
+    plan: free
+    branch: deploy/render-neon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: BIZAGENT_ENV
+        value: production
+      - key: BIZAGENT_AUTO_MIGRATE
+        value: "1"
+      - key: BIZAGENT_UPLOADS_DIR
+        value: /tmp/bizagent-uploads
+      - key: BIZAGENT_SCAN_SEARCH_CONCURRENCY
+        value: "2"
+      - key: BIZAGENT_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
