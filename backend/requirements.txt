@@ -8,7 +8,7 @@ pydantic>=2
 # Database
 sqlalchemy>=2
 alembic
-# For Postgres hosting (optional): psycopg[binary]
+psycopg[binary]>=3.2
 
 # Auth
 PyJWT>=2.8
