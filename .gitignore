@@ -1,27 +1,12 @@
-# Python
-backend/.venv/
-backend/venv/
+.venv/
+venv/
 __pycache__/
 *.pyc
-*.pdf
-
-# Secrets
 .env
-backend/.env
-
-# Vector store / data (Phase 5+)
-backend/chroma_db/
+.env.*
+!.env.example
+*.db
+*.sqlite3
 backend/uploads/
-backend/app/uploads/
-
-# OS
+.pytest_cache/
 .DS_Store
-
-test_data/
-backend/chroma_store/
-backend/runs/
-backend/pdfs/
-backend/app/pdfs
-backend/phases_pipeline/
-backend/app/runs/
-backend/app/chroma_store/

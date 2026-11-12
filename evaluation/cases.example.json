@@ -1,0 +1,11 @@
+[
+  {
+    "_placeholder": true,
+    "title": "REPLACE ME: a startup with a documented post-mortem",
+    "idea_description": "Describe the idea as it looked AT LAUNCH, not with hindsight.",
+    "target_customer": "who it was for",
+    "pricing_model": "how it charged",
+    "known_failure_categories": ["willingness_to_pay", "unit_economics"],
+    "source_note": "Link or citation of the post-mortem you took the failure causes from."
+  }
+]

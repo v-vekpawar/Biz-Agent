@@ -37,6 +37,40 @@ def strip_code_fence(raw: str) -> str:
         raw = raw.strip()
     return raw
 
+
+class LLMParseError(ValueError):
+    """Model output was not usable JSON of the expected shape."""
+
+
+def ask_json_with_repair(llm, prompt: str, raw_parser, *, max_repair_attempts: int = 1, system: str | None = None, explain: str = "Return ONLY corrected, valid JSON matching the originally requested shape."):
+    """Invoke an LLM expecting JSON, with a bounded self-repair retry.
+
+    `system` (behavioral constraints/classification discipline) is prepended
+    to the data prompt and to every retry — Phase 4 fix: system prompts were
+    previously defined but never actually delivered to the model.
+
+    `raw_parser(raw) -> value`; raising (any exception, normalized to
+    LLMParseError) triggers a repair attempt whose prompt embeds the failed
+    raw output. When every attempt fails, raises LLMParseError with all
+    attempt errors appended — callers convert that to their own failure
+    semantics (HTTP 502, run failure); no fabricated success is possible.
+    """
+    errors: list[str] = []
+    base = prompt if system is None else f"{system}\n\n---\n\n{prompt}"
+    current_prompt = base
+    for attempt in range(max_repair_attempts + 1):
+        raw = llm.invoke_text(current_prompt)
+        try:
+            return raw_parser(raw)
+        except Exception as exc:  # noqa: BLE001 — normalize into LLMParseError
+            errors.append(f"attempt {attempt + 1}: {type(exc).__name__}: {exc}")
+            current_prompt = (
+                f"{base}\n\n{raw}\n\nThat output failed to parse ({type(exc).__name__}: {exc}). {explain}"
+            )
+    raise LLMParseError(
+        "Model output was unparsable after repair retry. " + "; ".join(errors)
+    )
+
 def _extract_retry_seconds(err: Exception) -> Optional[float]:
     """Providers often say 'please try again in 1.275s' in the error message —
     use that exact figure when present instead of guessing a backoff."""

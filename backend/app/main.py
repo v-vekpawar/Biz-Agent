@@ -1,107 +1,92 @@
 """
-FastAPI wrapping for the multi-agent business-planning pipeline (Phase 8).
- 
-Endpoints:
-  POST /submit               — request text + optional file upload, kicks
-                                off the pipeline in a background task,
-                                returns a job_id immediately.
-  GET  /result/{job_id}      — returns the structured report + reasoning log
-                                once the job has finished (poll this).
-  GET  /result/{job_id}/pdf  — streams the generated PDF for that job.
-  GET  /                     — trivial health check.
+Biz-Agent 5.0: validate a business idea with real customers.
+
+  /app            the web app (served from ../frontend)
+  /api/v1/...     authenticated JSON API (interactive docs at /docs)
+  /p/{slug}       public test page (no login)
+  /d/{token}      public evidence dossier (no login, owner-controlled)
+  /health         liveness probe
 """
 
-import os, threading, traceback, uuid
-from typing import Dict, Optional
+from __future__ import annotations
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
-from .config import CORS_ORIGINS, PDFS_DIR, UPLOADS_DIR
-from .pipeline import run_once
-from .reports import build_run_record
+from .config import CORS_ORIGINS
+from .core import config as settings
 
-app = FastAPI(title="Multi-Agent Business Planning API")
+log = logging.getLogger("bizagent")
 
-app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],)
 
-_jobs: Dict[str, Dict] = {}
-_jobs_lock = threading.Lock()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings.secret_key()  # fail fast in production if BIZAGENT_SECRET_KEY is missing
+    from .api import deps
+    from .db.migrate import upgrade_to_head
+    from .repositories import ScanRepository
 
-def _set_job(job_id: str, **updates) -> None:
-    with _jobs_lock:
-        _jobs[job_id].update(updates)
-
-def _run_job(job_id: str, request: str, document_path: Optional[str]) -> None:
-    _set_job(job_id, status="running")
+    import os
+    if os.getenv("BIZAGENT_AUTO_MIGRATE", "1") != "0":
+        upgrade_to_head()
+    session = deps.session_factory()()
     try:
-        result = run_once(request, document_path=document_path, run_id=job_id)
-        record = build_run_record(result)
-        _set_job(job_id, status="done", record=record, error=None)
-    except Exception as e:
-        traceback.print_exc()
-        _set_job(job_id, status="error", error=f"{type(e).__name__}: {e}")
+        interrupted = ScanRepository(session).fail_interrupted()
+        if interrupted:
+            log.warning("Marked %s interrupted scan job(s) as failed.", interrupted)
     finally:
-        if document_path and os.path.exists(document_path):
-            try:
-                os.remove(document_path)
-            except OSError:
-                pass
+        session.close()
+    yield
 
-@app.post("/submit")
-async def submit(background_tasks: BackgroundTasks, request: str = Form(...), document: Optional[UploadFile] = File(None),):
-    """Accepts multipart/form-data: `request` (text) + optional `document` (PDF or text file). Returns immediately with a job_id to poll."""
-    if not request or not request.strip():
-        raise HTTPException(status_code=400, detail="`request` must not be empty.")
-    
-    job_id = uuid.uuid4().hex[:8]
-    document_path = None
 
-    if document is not None:
-        os.makedirs(UPLOADS_DIR, exist_ok=True)
-        ext = os.path.splitext(document.filename or "")[1] or ".txt"
-        document_path = os.path.join(UPLOADS_DIR, f"{job_id}{ext}")
-        with open(document_path, "wb") as f:
-            f.write(await document.read())
-    
-    with _jobs_lock:
-        _jobs[job_id] = {"status": "pending", "record": None, "error": None}
-    
-    background_tasks.add_task(_run_job, job_id, request.strip(), document_path)
+app = FastAPI(
+    title="Biz-Agent 5.0",
+    description="Pre-registered customer validation for business ideas.",
+    version="5.0.0",
+    lifespan=lifespan,
+)
 
-    return {"job_id": job_id, "status": "pending"}
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
-@app.get("/result/{job_id}")
-async def get_result(job_id: str):
-    with _jobs_lock:
-        job = _jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job_id.")
-    
-    if job["status"] in ("pending","running"):
-        return {"job_id": job_id, "status": job["status"]}
-    
-    if job["status"] == "error":
-        return {"job_id": job_id, "status": "error", "error": job["error"]}
-    
-    return {"job_id": job_id, "status": "done", **job["record"]}
 
-@app.get("/result/{job_id}/pdf")
-async def get_result_pdf(job_id: str):
-    with _jobs_lock:
-        job = _jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job_id.")
-    if job["status"] != "done":
-        raise HTTPException(status_code=409, detail=f"Job is not finished yet (status: {job['status']}).")
-    
-    pdf_path = os.path.join(PDFS_DIR, f"report_{job_id}.pdf")
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="PDF was not generated for this job.")
-    
-    return FileResponse(pdf_path, media_type="application/pdf", filename=f"report_{job_id}.pdf")
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    if request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
-@app.get("/")
+
+from .api.routes import v2_router  # noqa: E402
+from .api.routes.public import router as public_router  # noqa: E402
+
+app.include_router(v2_router)
+app.include_router(public_router)
+
+
+@app.get("/health")
 async def health():
-    return {"status": "ok", "service": "multi-agent-business-planning-api"}
+    return {"status": "ok", "service": "biz-agent", "version": "5.0.0"}
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse("/app/")
+
+
+_frontend = Path(settings.FRONTEND_DIR)
+if _frontend.exists():
+    app.mount("/app", StaticFiles(directory=str(_frontend), html=True), name="frontend")
+
+
+@app.exception_handler(500)
+async def server_error(_request: Request, _exc: Exception):
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong on the server."})

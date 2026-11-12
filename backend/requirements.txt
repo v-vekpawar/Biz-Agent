@@ -1,22 +1,29 @@
-# Phase 0 only needs fastapi + uvicorn + python-dotenv.
-# The rest are listed now so you install once and don't re-break your venv later in the build.
-
+# Web framework + server
 fastapi
 uvicorn[standard]
-python-dotenv
 python-multipart
+python-dotenv
+pydantic>=2
 
-# Phase 1+ (LangGraph pipeline)
-langgraph
+# Database
+sqlalchemy>=2
+alembic
+# For Postgres hosting (optional): psycopg[binary]
+
+# Auth
+PyJWT>=2.8
+
+# Decision-brief PDF (pure Python: no GTK / system libraries)
+reportlab>=4
+
+# Business-document ingestion
+pypdf
+python-docx
+openpyxl
+
+# AI providers + search (imported lazily; the app boots without keys)
+langchain-core
 langchain-groq
 langchain-google-genai
-langchain-openai
 tavily-python
-
-# Phase 5 (RAG)
-chromadb
-sentence-transformers
-
-# Phase 7 (PDF export)
-weasyprint
-pypdf
+langchain-openai

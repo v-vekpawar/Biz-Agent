@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest
+httpx
+playwright   # only for scripts/e2e_smoke.py
