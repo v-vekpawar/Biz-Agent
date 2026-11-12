@@ -1,9 +1,17 @@
 services:
   biz-agent:
     build: .
-    ports: ["8000:8000"]
-    env_file: .env
-    volumes: ["bizagent-data:/data"]
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      PORT: "8000"
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/bizagent.db}
+      BIZAGENT_UPLOADS_DIR: /data/uploads
+    volumes:
+      - bizagent-data:/data
     restart: unless-stopped
+
 volumes:
   bizagent-data:
