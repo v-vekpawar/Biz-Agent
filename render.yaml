@@ -23,6 +23,8 @@ services:
         sync: false
       - key: GOOGLE_API_KEY
         sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
       - key: GROQ_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
