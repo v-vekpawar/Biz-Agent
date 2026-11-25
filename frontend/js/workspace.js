@@ -79,14 +79,70 @@
     }
 
     function decisionPanel(panel) {
-      const s = ws.sprint;
-      if (!s || !s.locked_at) { panel.append(h("div", { class: "sheet" }, h("p", {}, "Your decision comes from a customer test. Lock a test to start collecting real signals."))); return; }
-      const dl = h("button", { class: "btn" }, "Download decision brief (PDF)");
-      dl.onclick = BZ.action(dl, downloadBrief);
-      panel.append(BZ.verdictBanner(s.evaluation, s),
-        h("div", { class: "sheet" }, h("h3", { style: { marginBottom: "8px" } }, "Take it with you"),
-          h("p", { class: "muted small" }, "A two-page brief: the verdict, the biggest risks, the locked test and its results, and the sources behind it. It is generated when you click and isn't stored on the server."),
-          h("div", { class: "inline" }, dl, h("button", { class: "btn secondary", onclick: () => { ws.view = "test"; draw(); } }, "See the live data"))));
+      const box = h("div");
+      panel.append(box);
+      (async () => {
+        let d;
+        try {
+          d = await BZ.api("/business-cases/" + ws.id + "/decision");
+        } catch (e) {
+          BZ.clear(box).append(h("div", { class: "err" }, e.message));
+          return;
+        }
+        const s = ws.sprint;
+        const dl = h("button", { class: "btn" }, "Download decision brief (PDF)");
+        dl.onclick = BZ.action(dl, downloadBrief);
+
+        // verdict banner: the live sprint component when a test exists
+        const banner = (s && s.locked_at && s.evaluation)
+          ? BZ.verdictBanner(s.evaluation, s)
+          : h("div", { class: "verdict " + (d.verdict.key === "none" ? "keep_running" : d.verdict.key) },
+              h("div", { class: "word" }, d.verdict.label),
+              h("p", { class: "why" }, d.verdict.detail),
+              h("p", { class: "small", style: { margin: "6px 0 0" } }, h("b", {}, "Basis: "), d.verdict.basis));
+
+        const PRI = { now: ["NOW", "pri-now"], next: ["NEXT", "pri-next"], later: ["LATER", "pri-later"] };
+        const LEVEL = { critical: "Critical", open: "Open", thin: "Thin support", partial: "Partly supported", low: "Lower risk" };
+
+        BZ.clear(box).append(
+          banner,
+          h("div", { class: "sheet" },
+            h("h3", { style: { marginBottom: "4px" } }, "What you should do"),
+            h("p", { class: "muted small" }, "Derived from your data — the verdict, the locked rule and the ranked risks. Not generic advice."),
+            h("ol", { class: "decisions" }, d.decisions.map((x) => {
+              const [label, cls] = PRI[x.priority] || PRI.later;
+              return h("li", { class: "decision" },
+                h("span", { class: "pri " + cls }, label),
+                h("div", {},
+                  h("div", { class: "decision-title" }, x.title),
+                  h("p", { class: "muted small", style: { margin: "4px 0 0" } }, x.detail)));
+            }))),
+          d.sprint && d.sprint.evaluation ? h("div", { class: "sheet" },
+            h("h3", { style: { marginBottom: "8px" } }, "The test behind this verdict"),
+            h("p", { class: "small", style: { margin: "0 0 6px" } }, h("b", {}, "Claim: "), d.sprint.claim),
+            d.sprint.evaluation.metrics.map(BZ.metricBlock),
+            h("div", { class: "stats" },
+              h("div", {}, h("span", {}, "Visitors"), h("b", {}, String(d.sprint.evaluation.counts.visitors))),
+              h("div", {}, h("span", {}, "Signups"), h("b", {}, String(d.sprint.evaluation.counts.signups))),
+              h("div", {}, h("span", {}, "Conversations"), h("b", {}, String(d.sprint.evaluation.counts.interviews))),
+              h("div", {}, h("span", {}, "Committed"), h("b", {}, String(d.sprint.evaluation.counts.committed))))) : null,
+          d.risks.length ? h("div", { class: "sheet" },
+            h("h3", { style: { marginBottom: "8px" } }, "The risks behind it"),
+            h("div", { class: "scroll" }, h("table", { class: "t" },
+              h("thead", {}, h("tr", {}, h("th", {}, "Risk"), h("th", {}, "Level"), h("th", {}, "Evidence"))),
+              h("tbody", {}, d.risks.map((r) => h("tr", {},
+                h("td", {}, r.statement),
+                h("td", {}, h("span", { class: "level " + r.level }, LEVEL[r.level] || r.level)),
+                h("td", {}, r.evidence.supports + " for / " + r.evidence.contradicts + " against / " + r.evidence.verified + " verified"))))))) : null,
+          h("div", { class: "sheet" },
+            h("div", { class: "spread", style: { marginBottom: "8px" } },
+              h("h3", {}, "Take it with you"),
+              h("span", { class: "muted tiny" }, d.evidence.total + " sources: " + d.evidence.verified + " verified, " + (d.evidence.unverified + d.evidence.indeterminate + d.evidence.failed) + " not")),
+            h("p", { class: "muted small" }, "The brief is a two-page PDF: the verdict, your decisions, the biggest risks, the locked test and its results, and the sources behind it. Generated when you click, never stored."),
+            h("div", { class: "inline" }, dl,
+              h("button", { class: "btn secondary", onclick: () => { ws.view = "test"; draw(); } }, "See the live data"),
+              s && s.locked_at ? h("button", { class: "btn secondary", onclick: () => { ws.view = "test"; draw(); } }, "Open the test") : null)));
+      })();
     }
 
     async function downloadBrief() {

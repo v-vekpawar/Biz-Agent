@@ -27,6 +27,8 @@
       h("p", { class: "small muted", style: { margin: "4px 0 0" } }, m.reason + " Range at " + Math.round(m.confidence * 100) + "% confidence. Minimum before any call: " + m.min_sample + "."));
   }
 
+  BZ.metricBlock = metricBlock;
+
   BZ.livePanel = (ws, panel, refresh) => {
     const s = ws.sprint, ev = s.evaluation;
     const open = s.status === "running" || s.status === "paused";

@@ -187,8 +187,7 @@ iframe.preview{width:100%;height:640px;border:1px solid var(--line);border-radiu
 
 
 /* v5.1 Idea review (pre-scan step) */
-.review-card{padding:24px 26px}
-.review-head{display:flex;gap:26px;align-items:center;flex-wrap:wrap}
+.review-card{padding:24px 26px}.review-head{display:flex;gap:26px;align-items:center;flex-wrap:wrap}
 .review-ring{width:132px;height:132px;flex:none}
 .review-head-copy{flex:1;min-width:240px}
 .review-tier{display:inline-block;font-size:14px;font-weight:700;padding:4px 12px;border-radius:999px;margin-bottom:10px}
@@ -206,3 +205,14 @@ iframe.preview{width:100%;height:640px;border:1px solid var(--line);border-radiu
 .review-list{margin:0;padding-left:20px}
 .review-list li{margin-bottom:7px;font-size:15px;line-height:1.45}
 @media(max-width:700px){.review-cols{grid-template-columns:1fr}.review-subs{grid-template-columns:repeat(2,1fr);row-gap:16px}.review-head{gap:18px}}
+
+
+/* v5.1 Decision tab: prioritized action list */
+.decisions{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:12px}
+.decision{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border:1px solid var(--line);border-radius:11px;background:var(--surface)}
+.pri{flex:none;font-size:11px;font-weight:700;letter-spacing:.08em;padding:4px 9px;border-radius:999px;margin-top:2px}
+.pri-now{background:var(--cobalt);color:#fff}
+.pri-next{background:var(--cobalt-wash);color:var(--cobalt-dark)}
+.pri-later{background:var(--slate-wash);color:var(--slate)}
+.decision-title{font-weight:650;font-size:16px;line-height:1.35}
+.decision p{margin:0}

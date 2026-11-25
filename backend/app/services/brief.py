@@ -94,3 +94,86 @@ def _verdict(risks: list[dict[str, Any]], sprint: dict[str, Any] | None) -> dict
         }
     return {"key": "none", "label": "NOT ASSESSED", "detail": "Run the risk scan to see what is most likely to sink this idea.",
             "basis": "No analysis yet"}
+
+
+def build_decisions(data: dict[str, Any]) -> list[dict[str, str]]:
+    """The founder's action list, derived deterministically from the same data
+    as the PDF (verdict, ranked risks, sprint evaluation). No LLM: every
+    decision traces back to a count or a locked rule."""
+    decisions: list[dict[str, str]] = []
+
+    def add(priority: str, title: str, detail: str, tag: str) -> None:
+        decisions.append({"priority": priority, "title": title, "detail": detail, "tag": tag})
+
+    sprint = data["sprint"]
+    risks = data["risks"]
+    verdict = data["verdict"]
+
+    if sprint is None:
+        if not risks:
+            add("now", "Run the risk scan", verdict["detail"], "scan")
+            return decisions
+        top = next((r for r in risks if r["sprint_testable"] and r["level"] != "low"), risks[0])
+        add("now", "Test your riskiest assumption with real people",
+            f"\u201c{top['statement']}\u201d Set up a customer test page for it — desk research can rank risks, "
+            "but only real people responding can show demand.", "test")
+        serious = [r for r in risks if r["level"] in ("critical", "open")][:3]
+        if serious:
+            add("next", "Keep these questions open as you research",
+                "The scan could not settle: " + "; ".join(r["statement"] for r in serious) + ".", "research")
+        add("later", "Re-run the scan when you learn something new",
+            "New evidence changes the ranking. Scans are free to re-run; old assessments stay in the history.", "scan")
+        return decisions
+
+    evaluation = sprint["evaluation"]
+    verdict_key = evaluation["verdict"]
+    finished = evaluation["finished"]
+    counts = evaluation["counts"]
+    primary = next((m for m in evaluation["metrics"] if m["role"] == "primary"), None)
+
+    if verdict_key == "keep_running":
+        missing = max(0, primary["min_sample"] - primary["trials"]) if primary else 0
+        if missing > 0:
+            add("now", f"Drive about {missing} more {primary['trial_unit']} to your page",
+                "The locked rule cannot call the test before the minimum sample. Share the page link where your "
+                "audience already gathers — one channel at a time, and keep the ?s= tags so you can compare them.", "traffic")
+        else:
+            add("now", "Keep collecting — the range still overlaps a threshold",
+                evaluation["next_step"], "wait")
+        add("next", "Log every conversation you have",
+            "A commitment (pre-order, paid pilot, booked follow-up) counts towards the supporting metric; "
+            "polite interest does not.", "log")
+        if not finished:
+            add("later", f"Decision day is {sprint['deadline']} (end of day, UTC)",
+                "When the window closes, the rule reads the data exactly as pre-registered.", "deadline")
+    elif verdict_key == "go":
+        add("now", "Raise the commitment",
+            "The data clears the bar you set before the test. Don't celebrate yet: run the next test where people "
+            "give money or real time — a paid pilot, a pre-order, a booked session.", "commit")
+        add("next", "Talk to the people who signed up",
+            f"{counts['signups']} people gave you their email (see the test tab). Ask what they would need to "
+            "become paying customers today.", "interview")
+    elif verdict_key == "pivot":
+        add("now", "Change one thing and re-test",
+            "There is pull, but below your target. Change the segment, the promise or the price — one variable — "
+            "then write a new protocol and test again. Don't relax this rule after the fact.", "pivot")
+        add("next", "Study who did respond",
+            f"{counts['signups']} people signed up anyway. What do they share? They are the seed of the sharper "
+            "version.", "learn")
+    elif verdict_key == "stop":
+        add("now", "Stop pursuing this version",
+            "The data credibly misses your floor. Stop here, or change the idea fundamentally — re-running the "
+            "same test hoping for a different answer is not a new test.", "stop")
+        add("next", "Keep the evidence",
+            "The brief and the dossier document why you stopped — that record makes the next idea easier to "
+            "judge.", "evidence")
+    else:  # inconclusive
+        add("now", "Run a sharper test",
+            "The window closed without a clear answer: more traffic, a narrower audience, or a clearer call to "
+            "action. Same claim, new protocol.", "retest")
+
+    if finished and verdict_key in ("go", "pivot", "stop"):
+        add("later", "Share the evidence",
+            "Export the decision brief (PDF) and turn on the shareable dossier for mentors, partners or "
+            "investors.", "share")
+    return decisions
