@@ -14,7 +14,7 @@ from typing import Any
 
 from reportlab.graphics.shapes import Circle, Drawing, Line, Rect, String
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
@@ -26,6 +26,7 @@ from reportlab.platypus import (
 from xml.sax.saxutils import escape
 
 from ..services.stats import pct
+from .charts import trend_drawing
 
 FONT_DIR = Path(__file__).parent / "fonts"
 _registered = False
@@ -52,6 +53,11 @@ LEVEL = {  # risk level -> (label, colour)
     "partial": ("Partly supported", colors.HexColor("#3E4F6B")),
     "low": ("Lower risk", colors.HexColor("#0F7B5F")),
 }
+PRIORITY_TONE = {  # decision priority -> (label, colour)
+    "now": ("NOW", colors.HexColor("#1D3FBB")),
+    "next": ("NEXT", colors.HexColor("#9A5B00")),
+    "later": ("LATER", colors.HexColor("#5E6B78")),
+}
 
 
 def _fonts() -> None:
@@ -75,6 +81,8 @@ def _styles() -> dict[str, ParagraphStyle]:
         "small": ParagraphStyle("small", fontSize=8.2, leading=11, fontName="Roboto", textColor=MUTED),
         "cell": ParagraphStyle("cell", fontSize=8.6, leading=11, **base),
         "cellb": ParagraphStyle("cellb", fontSize=9.4, leading=12.6, fontName="Roboto-Medium", textColor=INK),
+        "statnum": ParagraphStyle("statnum", fontSize=15, leading=18, fontName="Roboto-Bold", textColor=INK, alignment=TA_CENTER),
+        "statlabel": ParagraphStyle("statlabel", fontSize=7.6, leading=10, fontName="Roboto", textColor=MUTED, alignment=TA_CENTER),
         "verdict": ParagraphStyle("verdict", fontSize=19, leading=22, fontName="Roboto-Bold"),
         "mono": ParagraphStyle("mono", fontSize=7.2, leading=9.5, fontName="Roboto", textColor=MUTED),
     }
@@ -190,6 +198,29 @@ def render_brief_pdf(data: dict[str, Any]) -> bytes:
     else:
         story.append(_p("No assumptions have been analysed yet.", st["body"]))
 
+    # ---- what to do next ---------------------------------------------------
+    decisions = data.get("decisions") or []
+    if decisions:
+        story.append(_p("What you should do next", st["h2"]))
+        rows = []
+        for item in decisions:
+            label, colour = PRIORITY_TONE.get(item["priority"], PRIORITY_TONE["later"])
+            left = Paragraph(
+                f"<font color='{colour.hexval().replace('0x', '#')}'><b>{escape(label)}</b></font>", st["cell"]
+            )
+            right = [
+                _p(item["title"], st["cellb"]),
+                Spacer(1, 2),
+                _p(item["detail"], st["cell"]),
+            ]
+            rows.append([left, right])
+        t = Table(rows, colWidths=[16 * mm, W - 16 * mm])
+        t.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -2), 0.5, LINE),
+            ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(t)
+
     # ---- page 2: the customer test ----------------------------------------
     story.append(PageBreak())
     sp = data["sprint"]
@@ -199,6 +230,36 @@ def render_brief_pdf(data: dict[str, Any]) -> bytes:
                         "people responding to a real page, or agreeing to a real commitment, can show demand.", st["body"]))
     else:
         ev = sp["evaluation"]
+        counts = ev.get("counts") or {}
+        primary = next((m for m in ev["metrics"] if m["role"] == "primary"), None)
+        conversion = primary["rate"] if primary else None
+        stat_cells = [
+            ("Visitors", str(counts.get("visitors", 0))),
+            ("Signups", str(counts.get("signups", 0))),
+            ("Conversion", pct(conversion)),
+            ("Conversations", str(counts.get("interviews", 0))),
+            ("Committed", str(counts.get("committed", 0))),
+        ]
+        stat = Table(
+            [[Paragraph(escape(value), st["statnum"]) for _label, value in stat_cells],
+             [Paragraph(escape(label), st["statlabel"]) for label, _value in stat_cells]],
+            colWidths=[W / 5.0] * 5,
+        )
+        stat.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), WASH),
+            ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, LINE),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING", (0, 0), (-1, 0), 8), ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
+            ("TOPPADDING", (0, 1), (-1, 1), 0), ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
+        ]))
+        story.append(stat)
+        series = sp.get("series") or []
+        if series:
+            story.append(Spacer(1, 10))
+            story.append(trend_drawing(series, W))
+            story.append(_p("Visitors (light) and waitlist signups (dark) per day since the test was locked.", st["small"]))
+        story.append(Spacer(1, 6))
         info = Table([
             [_p("Claim", st["small"]), _p(sp["claim"], st["cell"])],
             [_p("Audience", st["small"]), _p(sp["audience"], st["cell"])],

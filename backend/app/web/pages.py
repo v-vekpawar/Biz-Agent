@@ -239,39 +239,71 @@ def render_message_page(title: str, message: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Dossier
+# Dossier: a read-only evidence dashboard
 # ---------------------------------------------------------------------------
 
 _DOSSIER_CSS = f"""
 *{{box-sizing:border-box}}
 body{{margin:0;font-family:{FONT};color:#14202B;background:#EEF1F4;line-height:1.55}}
-.page{{max-width:760px;margin:0 auto;padding:32px 20px 64px}}
-.kicker{{font-size:14px;color:#5E6B78;margin:0 0 6px}}
-h1{{font-size:clamp(24px,5vw,32px);line-height:1.2;margin:0 0 18px;letter-spacing:-.01em}}
-h2{{font-size:18px;margin:34px 0 10px}}
-.card{{background:#fff;border:1px solid #D3DAE1;border-radius:12px;padding:18px 20px;margin:0 0 14px}}
-.verdict{{border-radius:12px;padding:18px 20px;margin:0 0 14px}}
-.verdict b{{font-size:26px;display:block;margin-bottom:4px}}
-dl{{margin:0;display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:15px}}
+.page{{max-width:860px;margin:0 auto;padding:30px 20px 64px}}
+.kicker{{font-size:13.5px;color:#5E6B78;margin:0 0 6px}}
+h1{{font-size:clamp(26px,5vw,36px);line-height:1.15;margin:0 0 16px;letter-spacing:-.015em}}
+h2{{font-size:15px;margin:30px 0 10px;text-transform:uppercase;letter-spacing:.07em;color:#5E6B78;font-weight:700}}
+.card{{background:#fff;border:1px solid #D3DAE1;border-radius:14px;padding:18px 20px;margin:0 0 12px;box-shadow:0 10px 26px -18px rgba(20,32,43,.25)}}
+.verdict{{border-radius:14px;padding:20px 22px;margin:0 0 14px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}}
+.verdict b{{font-size:30px;display:block;line-height:1.1}}
+.verdict .state{{font-size:14.5px}}
+.verdict .next{{flex:1 1 300px;font-size:15px}}
+.kpis{{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:0 0 14px}}
+.kpi{{background:#fff;border:1px solid #D3DAE1;border-radius:12px;padding:14px 12px;text-align:center}}
+.kpi b{{display:block;font-size:26px;line-height:1.1;margin-bottom:3px}}
+.kpi span{{font-size:12px;color:#5E6B78}}
+dl{{margin:0;display:grid;grid-template-columns:150px 1fr;gap:8px 16px;font-size:15px}}
 dt{{color:#5E6B78}}dd{{margin:0;word-break:break-word}}
-.hash{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}}
+.hash{{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;word-break:break-all}}
 .nums{{display:flex;gap:22px;flex-wrap:wrap;margin:6px 0 4px;font-size:15px}}
 .nums span b{{font-size:20px}}
 .note{{font-size:14px;color:#3C4A57;margin:8px 0 0}}
 .small{{font-size:13px;color:#5E6B78}}
-table{{border-collapse:collapse;width:100%;font-size:14px}}td,th{{padding:6px 8px;border-bottom:1px solid #E2E7EC;text-align:left}}
-@media(max-width:520px){{dl{{grid-template-columns:1fr}}}}
+.legend{{display:flex;gap:16px;font-size:13px;color:#5E6B78;margin:6px 0 0}}
+.legend i{{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}}
+table{{border-collapse:collapse;width:100%;font-size:14px}}td,th{{padding:7px 8px;border-bottom:1px solid #E2E7EC;text-align:left}}
+th{{color:#5E6B78;font-weight:600}}
+.trend{{display:block;margin-top:4px}}
+@media(max-width:700px){{.kpis{{grid-template-columns:repeat(3,1fr)}}dl{{grid-template-columns:1fr}}.verdict{{flex-direction:column;align-items:flex-start;gap:8px}}}}
 """
+
+_CHART_VISITOR = "#C9D6E4"
+_CHART_SIGNUP = "#345B91"
+
+
+def _kpi(value: str, label: str) -> str:
+    return f'<div class="kpi"><b>{e(value)}</b><span>{e(label)}</span></div>'
 
 
 def render_dossier(view: dict[str, Any], *, nonce: str | None = None) -> str:
+    from ..reports.charts import trend_svg
+
     ev = view["evaluation"]
     label, fg, bg = VERDICT_STYLE[ev["verdict"]]
     final = view["final"]
+    counts = view.get("counts") or ev.get("counts") or {}
+    visitors, signups = counts.get("visitors", 0), counts.get("signups", 0)
+    conversion = (signups / visitors) if visitors else None
     state_line = (
         f"Concluded {fmt_dt(view['concluded_at'])}" if final
         else ("Live reading. The test has not concluded." if not ev["finished"] else "The test window has closed; not yet concluded by its owner.")
     )
+
+    kpis = "".join([
+        _kpi(str(visitors), "Unique visitors"),
+        _kpi(str(signups), "Signups"),
+        _kpi(pct(conversion), "Conversion"),
+        _kpi(str(counts.get("interviews", 0)), "Conversations"),
+        _kpi(str(counts.get("committed", 0)), "Committed"),
+        _kpi(str(view.get("days_live") or 1), "Days live"),
+    ])
+
     metric_blocks = []
     for m in ev["metrics"]:
         mlabel, mfg, mbg = VERDICT_STYLE[m["verdict"]]
@@ -286,6 +318,7 @@ def render_dossier(view: dict[str, Any], *, nonce: str | None = None) -> str:
   <p class="note">{e(m['reason'])}</p>
   <p class="small">Range is a {int(m['confidence'] * 100)}% Wilson score interval. Minimum sample before any call: {m['min_sample']}.</p>
 </section>""")
+
     notes = "".join(f'<p class="note">{e(n)}</p>' for n in ev["notes"])
     exclusions = ""
     if view["exclusions"]:
@@ -293,16 +326,41 @@ def render_dossier(view: dict[str, Any], *, nonce: str | None = None) -> str:
         exclusions = (f'<h2>Entries the owner excluded</h2><div class="card"><p class="small" style="margin-top:0">'
                       f"Excluded entries are removed from the counts above, never deleted, and always disclosed here.</p>"
                       f"<table><tr><th>Entry</th><th>Reason given</th></tr>{rows}</table></div>")
+
+    series = view.get("series") or []
+    trend = trend_svg(series)
+    trend_section = f"""
+<h2>Where the numbers came from</h2>
+<div class="card">
+  {trend}
+  <p class="legend"><span><i style="background:{_CHART_VISITOR}"></i>Unique visitors per day</span>
+  <span><i style="background:{_CHART_SIGNUP}"></i>Waitlist signups per day</span></p>
+  <p class="small">Visitors are counted once per browser; signups once per email. Long tests are grouped per week.</p>
+</div>"""
+
+    channels = view.get("channels") or []
+    channels_section = ""
+    if channels:
+        rows = "".join(
+            f"<tr><td>{e(c['channel'])}</td><td>{c['visitors']}</td><td>{c['signups']}</td>"
+            f"<td>{pct(c['signups'] / c['visitors']) if c['visitors'] else 'n/a'}</td></tr>"
+            for c in channels
+        )
+        channels_section = f"""
+<h2>Which sources worked</h2>
+<div class="card"><table><tr><th>Source</th><th>Visitors</th><th>Signups</th><th>Conversion</th></tr>{rows}</table></div>"""
+
     body = f"""
 <main class="page">
   <p class="kicker">Validation dossier by {e(view['owner_name'])}</p>
   <h1>{e(view['headline'])}</h1>
 
   <div class="verdict" style="background:{bg};color:{fg}">
-    <b>{e(label)}</b>
-    <span>{e(state_line)}</span>
+    <div><b>{e(label)}</b><span class="state">{e(state_line)}</span></div>
+    <div class="next">{e(ev['next_step'])}</div>
   </div>
-  <p class="note" style="margin:0 0 4px">{e(ev['next_step'])}</p>
+
+  <div class="kpis">{kpis}</div>
   {notes}
 
   <h2>What was tested</h2>
@@ -311,17 +369,21 @@ def render_dossier(view: dict[str, Any], *, nonce: str | None = None) -> str:
     <dt>Audience</dt><dd>{e(view['audience'])}</dd>
     {f"<dt>Traffic plan</dt><dd>{e(view['traffic_plan'])}</dd>" if view.get('traffic_plan') else ''}
     <dt>Deadline</dt><dd>{fmt_date(view['deadline'])} (end of day, UTC)</dd>
+    <dt>Locked</dt><dd>{fmt_dt(view['locked_at'])}, before any data was collected</dd>
   </dl></div>
+
+  {trend_section}
+  {channels_section}
+
+  <h2>Results against the locked rule</h2>
+  {''.join(metric_blocks)}
+  {exclusions}
 
   <h2>Pre-registration</h2>
   <div class="card">
     <p style="margin:0 0 10px">The page copy, the claim and the decision rule were locked <b>{fmt_dt(view['locked_at'])}</b>, before any data was collected, and cannot be edited afterwards. This fingerprint covers all of it:</p>
     <p class="hash" style="margin:0">{e(view['protocol_hash'] or '')}</p>
   </div>
-
-  <h2>Results</h2>
-  {''.join(metric_blocks)}
-  {exclusions}
 
   <h2>How to read this</h2>
   <div class="card small" style="color:#3C4A57">

@@ -13,6 +13,7 @@ from ..domain.models import BusinessCase, User
 from ..repositories import AssessmentRepository, EvidenceRepository, HypothesisRepository, SprintRepository
 from .riskscan import rank_risks
 from .sprints import SprintService, _aware
+from .stats import pct
 
 
 def _domain(url: str | None) -> str:
@@ -20,6 +21,15 @@ def _domain(url: str | None) -> str:
         return ""
     host = urlparse(url).netloc.lower()
     return host[4:] if host.startswith("www.") else host
+
+
+def _days_live(sprint, counts: dict) -> int:
+    """Whole days from lock to conclusion (or today), at least 1."""
+    locked = _aware(sprint.locked_at)
+    end = _aware(sprint.concluded_at) or _dt.datetime.now(_dt.timezone.utc)
+    if locked is None or end is None:
+        return 1
+    return max(1, (end - locked).days + 1)
 
 
 def build_brief(session: Session, case: BusinessCase, user: User) -> dict[str, Any]:
@@ -36,6 +46,7 @@ def build_brief(session: Session, case: BusinessCase, user: User) -> dict[str, A
         s = locked[0]  # newest locked sprint
         verdicts = sprints.list_verdicts(s.id)
         evaluation = verdicts[-1].evaluation if verdicts else service.evaluate(s)
+        counts = evaluation.get("counts") or {}
         sprint_block = {
             "status": s.status.value,
             "claim": s.protocol["claim"],
@@ -43,9 +54,13 @@ def build_brief(session: Session, case: BusinessCase, user: User) -> dict[str, A
             "headline": s.content["headline"],
             "deadline": s.protocol["deadline"],
             "locked_at": _aware(s.locked_at),
+            "concluded_at": _aware(s.concluded_at),
             "concluded": s.status == SprintStatus.CONCLUDED,
             "protocol_hash": s.protocol_hash,
             "evaluation": evaluation,
+            "series": sprints.daily_series(s.id),
+            "channels": sprints.channel_breakdown(s.id),
+            "days_live": _days_live(s, counts),
         }
 
     verdict = _verdict(risks, sprint_block)
@@ -139,7 +154,8 @@ def build_decisions(data: dict[str, Any]) -> list[dict[str, str]]:
                 "audience already gathers — one channel at a time, and keep the ?s= tags so you can compare them.", "traffic")
         else:
             add("now", "Keep collecting — the range still overlaps a threshold",
-                evaluation["next_step"], "wait")
+                "The confidence range has not separated from your floor or target yet. More data is the honest "
+                "answer, not a judgement call: leave the page and the rule exactly as locked.", "wait")
         add("next", "Log every conversation you have",
             "A commitment (pre-order, paid pilot, booked follow-up) counts towards the supporting metric; "
             "polite interest does not.", "log")
@@ -147,23 +163,26 @@ def build_decisions(data: dict[str, Any]) -> list[dict[str, str]]:
             add("later", f"Decision day is {sprint['deadline']} (end of day, UTC)",
                 "When the window closes, the rule reads the data exactly as pre-registered.", "deadline")
     elif verdict_key == "go":
+        target = pct(primary["success_rate"]) if primary else "your target"
         add("now", "Raise the commitment",
-            "The data clears the bar you set before the test. Don't celebrate yet: run the next test where people "
-            "give money or real time — a paid pilot, a pre-order, a booked session.", "commit")
+            f"{counts['signups']} of {counts['visitors']} visitors joined — above {target}. That proves interest, "
+            "not payment: the next test must cost the customer something real (a paid pilot, a pre-order, a "
+            "booked session).", "commit")
         add("next", "Talk to the people who signed up",
             f"{counts['signups']} people gave you their email (see the test tab). Ask what they would need to "
             "become paying customers today.", "interview")
     elif verdict_key == "pivot":
         add("now", "Change one thing and re-test",
-            "There is pull, but below your target. Change the segment, the promise or the price — one variable — "
-            "then write a new protocol and test again. Don't relax this rule after the fact.", "pivot")
+            "The whole confidence range sits between your floor and your target: real pull, not enough "
+            "conviction. Pick the single variable most likely to move it — audience, promise or price — change "
+            "only that, and pre-register a new rule.", "pivot")
         add("next", "Study who did respond",
             f"{counts['signups']} people signed up anyway. What do they share? They are the seed of the sharper "
             "version.", "learn")
     elif verdict_key == "stop":
         add("now", "Stop pursuing this version",
-            "The data credibly misses your floor. Stop here, or change the idea fundamentally — re-running the "
-            "same test hoping for a different answer is not a new test.", "stop")
+            "Even the optimistic end of the range stays under your floor. The evidence for stopping is exactly "
+            "as strong as the evidence for going would have been — honour it.", "stop")
         add("next", "Keep the evidence",
             "The brief and the dossier document why you stopped — that record makes the next idea easier to "
             "judge.", "evidence")

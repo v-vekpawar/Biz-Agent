@@ -61,6 +61,15 @@ def _aware(value: _dt.datetime | None) -> _dt.datetime | None:
     return value
 
 
+def _days_between(locked: _dt.datetime | None, concluded: _dt.datetime | None) -> int:
+    """Whole days from lock to conclusion (or now), at least 1."""
+    start = _aware(locked)
+    end = _aware(concluded) or _utcnow()
+    if start is None:
+        return 1
+    return max(1, (end - start).days + 1)
+
+
 def clean_channel(value: str | None) -> str | None:
     if not value:
         return None
@@ -291,4 +300,7 @@ class SprintService:
                 *({"kind": "conversation", "reason": s.excluded_reason} for s in excluded_signals),
             ],
             "series": self._r.daily_series(sprint.id),
+            "channels": self._r.channel_breakdown(sprint.id),
+            "counts": evaluation.get("counts") or {},
+            "days_live": _days_between(_aware(sprint.locked_at), _aware(sprint.concluded_at)),
         }

@@ -69,7 +69,9 @@ def download_brief(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
-    pdf = render_brief_pdf(build_brief(session, case, user))
+    data = build_brief(session, case, user)
+    data["decisions"] = build_decisions(data)
+    pdf = render_brief_pdf(data)
     return Response(
         content=pdf,
         media_type="application/pdf",
