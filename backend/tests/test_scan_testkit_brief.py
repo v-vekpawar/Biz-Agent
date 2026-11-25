@@ -383,7 +383,7 @@ def test_brief_pdf_with_scan_and_live_sprint(scan_client, monkeypatch, auth, cas
 def test_brief_handles_unicode_and_hostile_text(client, auth):
     cid = client.post(f"{API}/business-cases", headers=auth, json={
         "title": "<b>Chai</b> & आयुर्वेद ₹499", "idea_description": "Idea with <script>alert(1)</script> & markup </para>"}).json()["id"]
-    r = client.get(f"{API}/business-cases/{case_id}/brief.pdf", headers=auth) if False else client.get(f"{API}/business-cases/{cid}/brief.pdf", headers=auth)
+    r = client.get(f"{API}/business-cases/{cid}/brief.pdf", headers=auth)
     assert r.status_code == 200
     text = pdf_text(r.content)
     assert "₹499" in text and "<script>alert(1)</script>" in text  # rendered literally, not interpreted
