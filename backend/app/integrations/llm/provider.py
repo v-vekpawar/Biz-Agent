@@ -17,7 +17,7 @@ import threading
 import time
 from typing import Any, Protocol
 
-from ...common import invoke_with_retry
+from ...common import extract_text
 from ... import config as v1_config
 
 log = logging.getLogger("bizagent.llm")
@@ -27,6 +27,46 @@ log = logging.getLogger("bizagent.llm")
 _PROVIDER_STATE_LOCK = threading.Lock()
 _PROVIDER_COOLDOWNS: dict[str, float] = {}
 _PROVIDER_DISABLED: dict[str, str] = {}
+
+
+def llm_timeout_seconds() -> float:
+    """Per-call HTTP timeout for every provider. Prevents a single hung
+    request from stalling the scan; configurable via env."""
+    try:
+        return max(5.0, float(os.getenv("BIZAGENT_LLM_TIMEOUT_SECONDS", "60")))
+    except ValueError:
+        return 60.0
+
+
+def llm_concurrency() -> int:
+    """How many LLM calls the scan may run in parallel (bounded so free-tier
+    rate limits are not self-inflicted). Configurable via env."""
+    try:
+        return max(1, min(8, int(os.getenv("BIZAGENT_LLM_CONCURRENCY", "3"))))
+    except ValueError:
+        return 3
+
+
+_RATE_LIMIT_MARKERS = ("429", "rate limit", "rate_limit", "resource_exhausted", "resourceexhausted", "quota exceeded", "ratelimiterror")
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    if "ratelimit" in type(exc).__name__.lower():
+        return True
+    message = str(exc).lower()
+    return any(marker in message for marker in _RATE_LIMIT_MARKERS)
+
+
+def _rate_limit_wait(exc: Exception) -> float:
+    """Honour the provider's stated retry-after when present, capped at a few
+    seconds: the fallback chain should rotate quickly instead of sleeping."""
+    match = re.search(r"(?:retry[- ]after|try again in)[:= ]+([0-9.]+)", str(exc).lower())
+    if match:
+        try:
+            return min(5.0, max(0.2, float(match.group(1))))
+        except ValueError:
+            pass
+    return 2.0
 
 
 class ChatLLM(Protocol):
@@ -66,15 +106,19 @@ class _BaseChatLLM:
 
     def invoke_text(self, prompt: str) -> str:
         from langchain_core.messages import HumanMessage
-        from ...common import extract_text
 
-        # One short retry per provider. The fallback manager moves to the next
-        # provider promptly instead of sleeping through a long retry sequence.
-        response = invoke_with_retry(
-            self._get(), [HumanMessage(content=prompt)],
-            max_retries=1, base_delay=1.0,
-        )
-        return extract_text(response)
+        # One short, provider-honoured retry on a rate limit — then give up on
+        # this provider so the fallback chain rotates immediately. A long
+        # exponential backoff here would stall the whole scan on one provider.
+        messages = [HumanMessage(content=prompt)]
+        model = self._get()
+        try:
+            return extract_text(model.invoke(messages))
+        except Exception as exc:
+            if not _is_rate_limit(exc):
+                raise
+            time.sleep(_rate_limit_wait(exc))
+            return extract_text(model.invoke(messages))
 
     def describe(self) -> dict[str, Any]:
         return {"provider": self.provider_name, "model": self.model}
@@ -93,6 +137,7 @@ class GeminiChatLLM(_BaseChatLLM):
         return ChatGoogleGenerativeAI(
             model=self.model, temperature=self.temperature,
             google_api_key=v1_config.GOOGLE_API_KEY,
+            timeout=llm_timeout_seconds(),
         )
 
 
@@ -109,6 +154,8 @@ class GroqChatLLM(_BaseChatLLM):
         return ChatGroq(
             model=self.model, temperature=self.temperature,
             api_key=v1_config.GROQ_API_KEY,
+            request_timeout=llm_timeout_seconds(),
+            max_retries=0,
         )
 
 

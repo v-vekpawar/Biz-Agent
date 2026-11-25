@@ -41,6 +41,7 @@ from ..repositories import (
     RunRepository,
     UploadRepository,
 )
+from .parallel import map_bounded
 
 PLANNER_PROMPT_VERSION = "plan-5.0.0"
 
@@ -441,25 +442,33 @@ class InvestigationService:
         case: BusinessCase,
         events: list[dict],
     ) -> list[tuple[HypothesisPlan, Hypothesis]]:
+        # Prompt building reads session-attached rows: stay on this thread.
+        prompts = [(target, build_planning_prompt(target, case)) for target in targets]
+
+        def _plan_one(prompt: str):
+            return ask_json_with_repair(
+                self._planner,
+                prompt,
+                _parse_plan_or_raise,
+                max_repair_attempts=MAX_REPAIR_ATTEMPTS,
+                system=PLAN_SYSTEM_PROMPT,
+            )
+
+        # The planner calls are independent network round-trips: run them in a
+        # small bounded pool (results and errors keep the original order, and
+        # every DB write stays on this thread so persistence is deterministic).
+        parsed_results = map_bounded([prompt for _target, prompt in prompts], _plan_one)
+
         plans: list[tuple[HypothesisPlan, Hypothesis]] = []
-        for target in targets:
-            prompt = build_planning_prompt(target, case)
-            try:
-                parsed = ask_json_with_repair(
-                    self._planner,
-                    prompt,
-                    _parse_plan_or_raise,
-                    max_repair_attempts=MAX_REPAIR_ATTEMPTS,
-                    system=PLAN_SYSTEM_PROMPT,
-                )
-            except LLMParseError as exc:
-                raise InvestigationError.from_planner_failure(exc) from exc
-            except Exception as exc:
+        for (target, _prompt), parsed in zip(prompts, parsed_results):
+            if isinstance(parsed, Exception):
+                if isinstance(parsed, LLMParseError):
+                    raise InvestigationError.from_planner_failure(parsed) from parsed
                 # Provider misconfiguration/network (e.g. missing key) — a
                 # technical failure, persisted on the run, never a fake success.
                 raise InvestigationError(
-                    f"Planner unavailable ({type(exc).__name__}): {exc}"
-                ) from exc
+                    f"Planner unavailable ({type(parsed).__name__}): {parsed}"
+                ) from parsed
             plans.append(
                 (
                     HypothesisPlan(

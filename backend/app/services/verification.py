@@ -37,6 +37,7 @@ from ..domain.models import BusinessCase, Evidence, Hypothesis
 from ..integrations.fetch.base import ContentFetcher, FetchFailure, FetchUnavailable
 from ..integrations.llm.provider import ChatLLM
 from ..repositories import CaseRepository, EvidenceRepository, HypothesisRepository, RunRepository
+from .parallel import map_bounded
 
 VERIFY_PROMPT_VERSION = "verify-5.0.0"
 
@@ -302,36 +303,134 @@ class VerificationService:
         failures (never raised as HTTP errors); raises only when the
         deployment cannot verify at all (no fetcher) BEFORE any write.
         """
+        prepared = self._prepare_row(evidence)
+        if prepared is None:
+            raise VerifierUnavailableError(
+                "Content fetcher unavailable: no source-fetch integration is "
+                "configured (TAVILY_API_KEY missing) — verification cannot run."
+            )
+        outcome = self._classify_row(prepared)
+        self._apply_outcome(outcome, run_id=run_id)
+        return outcome
+
+    def verify_case(
+        self,
+        case: BusinessCase,
+        evidence_ids: list[int] | None = None,
+        *,
+        run_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Verify URL-bearing evidence rows of the case (default: all).
+
+        Rows without a source_url are SKIPPED and reported (never silently
+        treated as verified); per-row technical failures are collected in
+        each outcome — the batch always returns an inspectable summary.
+
+        The slow part of each row (source fetch + one LLM verdict per linked
+        hypothesis) runs in a bounded parallel pool; every database write
+        happens afterwards on this thread, in the original row order, so the
+        persisted result is identical to the sequential path.
+        """
         if self._fetcher is None:
             raise VerifierUnavailableError(
                 "Content fetcher unavailable: no source-fetch integration is "
                 "configured (TAVILY_API_KEY missing) — verification cannot run."
             )
 
+        if evidence_ids:
+            chosen: list[Evidence] = []
+            for eid in evidence_ids:
+                row = self._evidence.get(eid)
+                if row is None or row.business_case_id != case.id:
+                    raise ValueError(
+                        f"Evidence {eid} not found in business case {case.id}."
+                    )
+                chosen.append(row)
+        else:
+            chosen = self._evidence.list_by_case(case.id)
+
+        prepared_rows: list[dict] = []
+        skipped: list[dict] = []
+        for row in chosen:
+            # Automatic post-research checks may revisit a case. Avoid spending
+            # provider/fetch budget on rows that already passed verification.
+            if getattr(row.verification_status, "value", row.verification_status) == VerificationStatus.VERIFIED.value:
+                skipped.append(
+                    {"evidence_id": row.id, "reason": "already verified — retained prior successful check"}
+                )
+                continue
+            if not (row.source_url or "").strip():
+                skipped.append(
+                    {"evidence_id": row.id, "reason": "no source URL — verify its origin manually"}
+                )
+                continue
+            context = self._prepare_row(row)
+            if context is None:  # deployment degraded between construction and use
+                raise VerifierUnavailableError(
+                    "Content fetcher unavailable: no source-fetch integration is "
+                    "configured (TAVILY_API_KEY missing) — verification cannot run."
+                )
+            prepared_rows.append(context)
+
+        outcomes: list[VerificationOutcome] = map_bounded(prepared_rows, self._classify_row)
+
+        results: list[VerificationOutcome] = []
+        for outcome in outcomes:
+            if isinstance(outcome, VerifierUnavailableError):
+                raise outcome  # deployment-level: rows before this one stay applied
+            if isinstance(outcome, Exception):
+                raise outcome
+            self._apply_outcome(outcome, run_id=run_id)
+            results.append(outcome)
+
+        summary = {
+            "verified": sum(1 for r in results if r.row_status == VerificationStatus.VERIFIED.value),
+            "indeterminate": sum(1 for r in results if r.row_status == VerificationStatus.INDETERMINATE.value),
+            "failed": sum(1 for r in results if r.row_status == VerificationStatus.FAILED.value),
+            "conflicts": sum(len(r.conflicts) for r in results),
+        }
+        return {"results": results, "skipped": skipped, "summary": summary}
+
+    # --- internals ------------------------------------------------------------
+
+    def _prepare_row(self, evidence: Evidence) -> dict | None:
+        """Read everything the classification needs from the database (this
+        thread only). Returns None when the deployment has no fetcher."""
+        if self._fetcher is None:
+            return None
+        pairs = []
+        for row, link in self._evidence.links_for_evidence(evidence.id):
+            pairs.append((row, link, self._hypotheses.get(link.hypothesis_id)))
+        case = self._cases.get(evidence.business_case_id)
+        return {"evidence": evidence, "pairs": pairs, "case": case, "fetcher": self._fetcher}
+
+    def _classify_row(self, prepared: dict) -> VerificationOutcome:
+        """Fetch the source and classify every linked pair. Network + LLM only:
+        NO database writes, so it is safe inside the bounded parallel pool."""
+        evidence: Evidence = prepared["evidence"]
+        fetcher = prepared["fetcher"]
         outcome = VerificationOutcome(
             evidence_id=evidence.id,
             row_status=VerificationStatus.UNVERIFIED.value,
-            fetcher=self._fetcher.provider_name,
+            fetcher=fetcher.provider_name,
         )
 
         try:
-            content = self._fetcher.fetch(evidence.source_url)  # type: ignore[union-attr]
+            content = fetcher.fetch(evidence.source_url)
             outcome.fetched = True
         except FetchUnavailable as exc:
             # Deployment degraded between construction and use — same 503 semantics.
             raise VerifierUnavailableError(str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 — ANY fetch problem fails the pass closed
             reason = f"source fetch failed: {type(exc).__name__}: {exc}"
-            self._mark_row_failed(evidence, reason)
             outcome.row_status = VerificationStatus.FAILED.value
             outcome.failures.append(reason)
             outcome.events.append(
                 {"type": "verify_fetch_failed", "evidence_id": evidence.id, "error": reason}
             )
-            self._record(outcome, run_id)
             return outcome
 
-        pairs = self._evidence.links_for_evidence(evidence.id)
+        pairs = prepared["pairs"]
         if not pairs:
             outcome.events.append(
                 {
@@ -341,14 +440,12 @@ class VerificationService:
                     "reason": "no linked hypotheses to classify against",
                 }
             )
-            self._record(outcome, run_id)
             return outcome
 
-        case = self._cases.get(evidence.business_case_id)
+        case = prepared["case"]
         any_verified = False
         any_indeterminate = False
-        for _evidence_row, link in pairs:
-            hypothesis = self._hypotheses.get(link.hypothesis_id)
+        for _evidence_row, link, hypothesis in pairs:
             if hypothesis is None:
                 outcome.failures.append(f"linked hypothesis {link.hypothesis_id} not found")
                 continue
@@ -368,21 +465,6 @@ class VerificationService:
 
             verdict = PairVerdict.from_parsed(hypothesis.id, parsed)
             outcome.verdicts.append(verdict)
-            # Classification per pair (rewrites an existing pair in place):
-            self._evidence.link(
-                hypothesis.id,
-                evidence.id,
-                verdict.relationship,
-                verdict.relationship_rationale,
-            )
-            # Evidence-level assessments written from the verdict:
-            self._evidence.update(
-                evidence.id,
-                {
-                    "relevance_assessment": verdict.relevance_assessment,
-                    "reliability_assessment": verdict.reliability_assessment,
-                },
-            )
             outcome.events.append(
                 {
                     "type": "verify",
@@ -414,20 +496,41 @@ class VerificationService:
             outcome.row_status = VerificationStatus.INDETERMINATE.value
         else:
             outcome.row_status = VerificationStatus.FAILED.value  # nothing classified at all
+        return outcome
 
-        self._evidence.update(evidence.id, {"verification_status": outcome.row_status})
+    def _apply_outcome(self, outcome: VerificationOutcome, *, run_id: int | None) -> None:
+        """Persist one classified outcome: pair reclassification, row status,
+        honest limitations, diagnostics. Session thread only."""
+        evidence_id = outcome.evidence_id
+        for verdict in outcome.verdicts:
+            # Classification per pair (rewrites an existing pair in place):
+            self._evidence.link(
+                verdict.hypothesis_id,
+                evidence_id,
+                verdict.relationship,
+                verdict.relationship_rationale,
+            )
+            # Evidence-level assessments written from the verdict:
+            self._evidence.update(
+                evidence_id,
+                {
+                    "relevance_assessment": verdict.relevance_assessment,
+                    "reliability_assessment": verdict.reliability_assessment,
+                },
+            )
+        self._evidence.update(evidence_id, {"verification_status": outcome.row_status})
         note = _pass_note(outcome)
         if note:
-            row = self._evidence.require(evidence.id)
+            row = self._evidence.require(evidence_id)
             self._evidence.update(
-                evidence.id,
+                evidence_id,
                 {"limitations": _append_limitation(row.limitations, note)},
             )
         elif outcome.row_status == VerificationStatus.FAILED.value and outcome.failures:
             # durable honesty: the row carries WHY it failed, not just the response
-            row = self._evidence.require(evidence.id)
+            row = self._evidence.require(evidence_id)
             self._evidence.update(
-                evidence.id,
+                evidence_id,
                 {
                     "limitations": _append_limitation(
                         row.limitations, "verification failed — " + "; ".join(outcome.failures)
@@ -435,68 +538,18 @@ class VerificationService:
                 },
             )
         self._record(outcome, run_id)
-        return outcome
 
-    def verify_case(
-        self,
-        case: BusinessCase,
-        evidence_ids: list[int] | None = None,
-        *,
-        run_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Verify URL-bearing evidence rows of the case (default: all).
-
-        Rows without a source_url are SKIPPED and reported (never silently
-        treated as verified); per-row technical failures are collected in
-        each outcome — the batch always returns an inspectable summary.
-        """
-        if self._fetcher is None:
-            raise VerifierUnavailableError(
-                "Content fetcher unavailable: no source-fetch integration is "
-                "configured (TAVILY_API_KEY missing) — verification cannot run."
-            )
-
-        if evidence_ids:
-            chosen: list[Evidence] = []
-            for eid in evidence_ids:
-                row = self._evidence.get(eid)
-                if row is None or row.business_case_id != case.id:
-                    raise ValueError(
-                        f"Evidence {eid} not found in business case {case.id}."
-                    )
-                chosen.append(row)
-        else:
-            chosen = self._evidence.list_by_case(case.id)
-
-        results: list[VerificationOutcome] = []
-        skipped: list[dict] = []
-        for row in chosen:
-            # Automatic post-research checks may revisit a case. Avoid spending
-            # provider/fetch budget on rows that already passed verification.
-            if getattr(row.verification_status, "value", row.verification_status) == VerificationStatus.VERIFIED.value:
-                skipped.append(
-                    {"evidence_id": row.id, "reason": "already verified — retained prior successful check"}
-                )
-                continue
-            if not (row.source_url or "").strip():
-                skipped.append(
-                    {"evidence_id": row.id, "reason": "no source URL — verify its origin manually"}
-                )
-                continue
-            try:
-                results.append(self.verify_evidence(row, run_id=run_id))
-            except VerifierUnavailableError:
-                raise  # deployment-level: bubbles to route 503
-
-        summary = {
-            "verified": sum(1 for r in results if r.row_status == VerificationStatus.VERIFIED.value),
-            "indeterminate": sum(1 for r in results if r.row_status == VerificationStatus.INDETERMINATE.value),
-            "failed": sum(1 for r in results if r.row_status == VerificationStatus.FAILED.value),
-            "conflicts": sum(len(r.conflicts) for r in results),
-        }
-        return {"results": results, "skipped": skipped, "summary": summary}
-
-    # --- internals ------------------------------------------------------------
+    def _record(self, outcome: VerificationOutcome, run_id: int | None) -> None:
+        """Merge diagnostic events into an investigation run's metadata when a
+        run_id was supplied (diagnostics only — never run lifecycle)."""
+        if self._runs is None or not run_id or not outcome.events:
+            return
+        run = self._runs.get(run_id)
+        if run is None:
+            return
+        existing = list((run.workflow_metadata or {}).get("verification_events") or [])
+        existing.extend(outcome.events)
+        self._runs.merge_metadata(run_id, {"verification_events": existing})
 
     def _classify(
         self,
@@ -522,23 +575,3 @@ class VerificationService:
             raise VerificationHold(
                 f"verifier LLM unavailable: {type(exc).__name__}: {exc}"
             ) from exc
-
-    def _mark_row_failed(self, evidence: Evidence, reason: str) -> None:
-        self._evidence.update(evidence.id, {"verification_status": VerificationStatus.FAILED.value})
-        row = self._evidence.require(evidence.id)
-        self._evidence.update(
-            evidence.id,
-            {"limitations": _append_limitation(row.limitations, f"verification failed — {reason}")},
-        )
-
-    def _record(self, outcome: VerificationOutcome, run_id: int | None) -> None:
-        """Merge diagnostic events into an investigation run's metadata when a
-        run_id was supplied (diagnostics only — never run lifecycle)."""
-        if self._runs is None or not run_id or not outcome.events:
-            return
-        run = self._runs.get(run_id)
-        if run is None:
-            return
-        existing = list((run.workflow_metadata or {}).get("verification_events") or [])
-        existing.extend(outcome.events)
-        self._runs.merge_metadata(run_id, {"verification_events": existing})

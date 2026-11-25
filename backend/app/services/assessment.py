@@ -49,6 +49,7 @@ from ..repositories import (
     HypothesisRepository,
     RunRepository,
 )
+from .parallel import map_bounded
 
 ASSESS_PROMPT_VERSION = "assess-5.0.0"
 
@@ -298,6 +299,75 @@ class AssessmentService:
                 records.append((experiment, outcome))
         return records
 
+    def _prepare(self, hypothesis: Hypothesis, *, run_id: int | None) -> dict:
+        """Gather everything the LLM call needs from the database (must run on
+        the session's own thread). Returns the prompt inputs, or a
+        deterministic-unknown marker when no LLM call is needed at all."""
+        links = self._evidence.links_for_hypothesis(hypothesis.id)
+        outcome_records = self._experiment_records(hypothesis.id)
+        facts = evidence_facts(links)
+        case = self._cases.get(hypothesis.business_case_id) if self._cases is not None else None
+        if run_id is None and self._runs is not None:
+            existing_runs = self._runs.list_by_case(hypothesis.business_case_id)
+            run_id = existing_runs[0].id if existing_runs else None
+        return {
+            "hypothesis": hypothesis,
+            "links": links,
+            "facts": facts,
+            "case": case,
+            "run_id": run_id,
+            "needs_llm": bool(links or outcome_records),
+            "outcomes": outcome_records,
+        }
+
+    def _invoke(self, prep: dict) -> dict:
+        """The LLM call only (no database access): safe to run in a worker."""
+        hypothesis = prep["hypothesis"]
+        prompt = build_assessment_prompt(
+            hypothesis, prep["case"], prep["links"], prep["facts"], outcomes=prep["outcomes"]
+        )
+        verified_contradicts = list(prep["facts"]["contradicts"]["verified"])
+        return ask_json_with_repair(
+            self._llm,
+            prompt,
+            lambda raw: parse_assessment(raw, verified_contradicts),
+            max_repair_attempts=MAX_REPAIR_ATTEMPTS,
+            system=ASSESS_SYSTEM_PROMPT,
+        )
+
+    def _record(self, prep: dict, parsed: dict | None) -> dict:
+        """Append the new assessment version (session thread only)."""
+        hypothesis: Hypothesis = prep["hypothesis"]
+        facts = prep["facts"]
+        if parsed is None:
+            # Zero linked evidence AND no recorded outcomes: deterministic
+            # `unknown`, no LLM, nothing invented.
+            assessment = self._assessments.add(
+                hypothesis.id,
+                HypothesisStatus.UNKNOWN.value,
+                "No linked evidence exists yet; the status stays unknown until "
+                "evidence is collected (unknown is better than unsupported certainty).",
+                evidence_gaps="no evidence has been linked to this hypothesis",
+                limitations="deterministic assessment without any evidence records",
+                recommended_next_step="run an investigation or add manual evidence for this hypothesis",
+                investigation_run_id=prep["run_id"],
+            )
+            return {"assessment": assessment, "facts": facts}
+
+        supporting_ids, contradicting_ids = referenced_evidence_ids(facts)
+        assessment = self._assessments.add(
+            hypothesis.id,
+            parsed["status"],
+            parsed["rationale"],
+            supporting_evidence_ids=supporting_ids,
+            contradicting_evidence_ids=contradicting_ids,
+            evidence_gaps=parsed["evidence_gaps"],
+            limitations=parsed["limitations"],
+            recommended_next_step=parsed["recommended_next_step"],
+            investigation_run_id=prep["run_id"],
+        )
+        return {"assessment": assessment, "facts": facts}
+
     def assess_hypothesis(
         self,
         hypothesis: Hypothesis,
@@ -310,39 +380,11 @@ class AssessmentService:
         versions (repository is append-only); updates the denormalized
         Hypothesis.current_status.
         """
-        links = self._evidence.links_for_hypothesis(hypothesis.id)
-        outcome_records = self._experiment_records(hypothesis.id)
-        facts = evidence_facts(links)
-        case = self._cases.get(hypothesis.business_case_id) if self._cases is not None else None
-        if run_id is None and self._runs is not None:
-            existing_runs = self._runs.list_by_case(hypothesis.business_case_id)
-            run_id = existing_runs[0].id if existing_runs else None
-
-        if not links and not outcome_records:
-            # Zero linked evidence AND no recorded outcomes: deterministic
-            # `unknown`, no LLM, nothing invented.
-            assessment = self._assessments.add(
-                hypothesis.id,
-                HypothesisStatus.UNKNOWN.value,
-                "No linked evidence exists yet; the status stays unknown until "
-                "evidence is collected (unknown is better than unsupported certainty).",
-                evidence_gaps="no evidence has been linked to this hypothesis",
-                limitations="deterministic assessment without any evidence records",
-                recommended_next_step="run an investigation or add manual evidence for this hypothesis",
-                investigation_run_id=run_id,
-            )
-            return {"assessment": assessment, "facts": facts}
-
-        prompt = build_assessment_prompt(hypothesis, case, links, facts, outcomes=outcome_records)
-        verified_contradicts = list(facts["contradicts"]["verified"])
+        prep = self._prepare(hypothesis, run_id=run_id)
+        if not prep["needs_llm"]:
+            return self._record(prep, None)
         try:
-            parsed = ask_json_with_repair(
-                self._llm,
-                prompt,
-                lambda raw: parse_assessment(raw, verified_contradicts),
-                max_repair_attempts=MAX_REPAIR_ATTEMPTS,
-                system=ASSESS_SYSTEM_PROMPT,
-            )
+            parsed = self._invoke(prep)
         except LLMParseError as exc:
             raise AssessmentError(
                 "Assessment produced unusable output after repair retry. " + str(exc)
@@ -351,20 +393,7 @@ class AssessmentService:
             raise AssessmentError(
                 f"Assessor unavailable ({type(exc).__name__}): {exc}"
             ) from exc
-
-        supporting_ids, contradicting_ids = referenced_evidence_ids(facts)
-        assessment = self._assessments.add(
-            hypothesis.id,
-            parsed["status"],
-            parsed["rationale"],
-            supporting_evidence_ids=supporting_ids,
-            contradicting_evidence_ids=contradicting_ids,
-            evidence_gaps=parsed["evidence_gaps"],
-            limitations=parsed["limitations"],
-            recommended_next_step=parsed["recommended_next_step"],
-            investigation_run_id=run_id,
-        )
-        return {"assessment": assessment, "facts": facts}
+        return self._record(prep, parsed)
 
     def assess_case(
         self,
@@ -391,12 +420,39 @@ class AssessmentService:
             existing_runs = self._runs.list_by_case(case.id)
             run_id = existing_runs[0].id if existing_runs else None
 
+        # Phase 1 (this thread): read every hypothesis's inputs from the DB.
+        preps = [self._prepare(hypothesis, run_id=run_id) for hypothesis in chosen]
+        # Phase 2 (bounded pool): the independent LLM calls run in parallel;
+        # a failure is kept in order and converted below, exactly as the
+        # sequential path did.
+        parsed_results = map_bounded(
+            [prep for prep in preps if prep["needs_llm"]],
+            self._invoke,
+        )
+        parsed_by_id = {
+            prep["hypothesis"].id: parsed
+            for prep, parsed in zip([p for p in preps if p["needs_llm"]], parsed_results)
+        }
+        # Phase 3 (this thread): write the append-only versions in the
+        # original order, deterministic and single-session.
         results = []
-        for hypothesis in chosen:
-            outcome = self.assess_hypothesis(hypothesis, run_id=run_id)
+        for prep in preps:
+            if not prep["needs_llm"]:
+                outcome = self._record(prep, None)
+            else:
+                parsed = parsed_by_id[prep["hypothesis"].id]
+                if isinstance(parsed, LLMParseError):
+                    raise AssessmentError(
+                        "Assessment produced unusable output after repair retry. " + str(parsed)
+                    ) from parsed
+                if isinstance(parsed, Exception):
+                    raise AssessmentError(
+                        f"Assessor unavailable ({type(parsed).__name__}): {parsed}"
+                    ) from parsed
+                outcome = self._record(prep, parsed)
             results.append(
                 {
-                    "hypothesis_id": hypothesis.id,
+                    "hypothesis_id": prep["hypothesis"].id,
                     "assessment": outcome["assessment"],
                     "facts": outcome["facts"],
                 }

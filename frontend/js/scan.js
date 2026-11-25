@@ -26,7 +26,7 @@
       const idx = Math.max(0, STEPS.findIndex((s) => s[0] === job.step));
       panel.append(h("div", { class: "sheet" },
         h("h2", {}, "Scanning your idea"),
-        h("p", { class: "muted" }, "This usually takes one to three minutes. You can leave this page; the scan keeps running."),
+        h("p", { class: "muted" }, "This usually takes a minute or two. You can leave this page; the scan keeps running."),
         h("div", { class: "bar", role: "progressbar", "aria-valuenow": job.progress, "aria-valuemin": 0, "aria-valuemax": 100 }, h("i", { style: { width: job.progress + "%" } })),
         h("ul", { class: "steps" }, STEPS.map((s, i) => h("li", { class: i < idx ? "done" : i === idx ? "on" : "" }, i < idx ? "Done" : i === idx ? "Now" : "Next", ": ", s[1])))));
       return;
