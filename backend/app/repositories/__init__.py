@@ -14,6 +14,7 @@ from .cases import CaseRepository
 from .evidence import EvidenceRepository
 from .experiments import ExperimentRepository
 from .hypotheses import HypothesisRepository
+from .ideareviews import IdeaReviewRepository
 from .runs import RunRepository
 from .scans import ScanRepository
 from .sprints import SprintRepository
@@ -26,6 +27,7 @@ __all__ = [
     "EvidenceRepository",
     "ExperimentRepository",
     "HypothesisRepository",
+    "IdeaReviewRepository",
     "RunRepository",
     "ScanRepository",
     "SprintRepository",

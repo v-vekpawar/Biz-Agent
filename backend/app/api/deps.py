@@ -27,6 +27,7 @@ from ..repositories import (
     EvidenceRepository,
     ExperimentRepository,
     HypothesisRepository,
+    IdeaReviewRepository,
     RunRepository,
     ScanRepository,
     SprintRepository,
@@ -38,6 +39,7 @@ from ..services.documents import DocumentService
 from ..services.evidence import EvidenceService
 from ..services.experiments import ExperimentService
 from ..services.hypotheses import HypothesisService
+from ..services.ideareview import IdeaReviewService
 from ..services.investigation import InvestigationService
 from ..services.riskscan import ScanDeps, execute_scan
 from ..services.sprints import SprintService
@@ -356,6 +358,22 @@ def get_sprint_or_404(
 def get_testkit_llm() -> ChatLLM:
     """Test-kit designer model. Overridable in tests."""
     return get_reasoning_llm()
+
+
+def get_idea_review_repo(session: Session = Depends(get_db)) -> IdeaReviewRepository:
+    return IdeaReviewRepository(session)
+
+
+def get_idea_review_llm() -> ChatLLM:
+    """Idea-reviewer model (pre-scan write-up analysis). Overridable in tests."""
+    return get_reasoning_llm()
+
+
+def get_idea_review_service(
+    llm: ChatLLM = Depends(get_idea_review_llm),
+    reviews: IdeaReviewRepository = Depends(get_idea_review_repo),
+) -> tuple[IdeaReviewService, IdeaReviewRepository]:
+    return IdeaReviewService(llm), reviews
 
 
 def get_testkit_service(llm: ChatLLM = Depends(get_testkit_llm)) -> TestKitService:

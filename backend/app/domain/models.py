@@ -387,6 +387,29 @@ class ScanJob(Base):
     finished_at: Mapped[_dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class IdeaReview(Base):
+    """The AI idea review shown BEFORE the risk scan: how well-specified is
+    this idea today? One row per business case (re-running replaces it; the
+    idea itself is versioned through BusinessCase.updated_at, not here).
+
+    Advisory only: it judges the write-up's clarity/specificity, never market
+    demand, and is always labelled as such in the UI.
+    """
+
+    __tablename__ = "idea_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    business_case_id: Mapped[int] = mapped_column(
+        ForeignKey("business_cases.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)  # score, tier, strengths, ...
+    meta: Mapped[dict | None] = mapped_column(JSON)             # provider, model, prompt version
+    created_at: Mapped[_dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[_dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=func.now()
+    )
+
+
 class Sprint(Base):
     """A validation sprint: one claim, one pre-registered decision rule, one
     public test page. `content` and `protocol` are frozen once `locked_at` is set."""

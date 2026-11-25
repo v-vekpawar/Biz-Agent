@@ -2,23 +2,24 @@
   const { h } = BZ;
 
   BZ.workspaceView = async (app, { id }) => {
-    const ws = { id: Number(id), view: null, job: null, risks: [], recommended: null, sprint: null, sprints: [], selectedSprintId: null, docs: [], draftOnly: null, chosenHypothesis: null };
+    const ws = { id: Number(id), view: null, job: null, risks: [], recommended: null, sprint: null, sprints: [], selectedSprintId: null, docs: [], draftOnly: null, chosenHypothesis: null, review: null };
     const root = h("div", { class: "wrap" });
     app.append(root);
     let pollTimer = null, dead = false;
 
     async function load() {
       const base = "/business-cases/" + ws.id;
-      const [c, ov, scan, risks, sprints, docs] = await Promise.all([
+      const [c, ov, scan, risks, sprints, docs, review] = await Promise.all([
         BZ.api(base), BZ.api(base + "/overview"), BZ.api(base + "/scan"), BZ.api(base + "/risks"), BZ.api(base + "/sprints"),
         BZ.api(base + "/documents").catch(() => []),
+        BZ.api(base + "/idea-review").catch(() => null),
       ]);
-      Object.assign(ws, { case: c, overview: ov, job: scan.job, risks: risks.risks, recommended: risks.recommended_hypothesis_id, docs, sprints });
+      Object.assign(ws, { case: c, overview: ov, job: scan.job, risks: risks.risks, recommended: risks.recommended_hypothesis_id, docs, sprints, review });
       const preferredId = ws.selectedSprintId || ov.current_sprint_id;
       ws.sprint = sprints.find((s) => s.id === preferredId) || null;
       if (ws.selectedSprintId && !ws.sprint) ws.selectedSprintId = null;
       if (ws.sprint && ws.sprint.locked_at) ws.draftOnly = null;
-      if (!ws.view) ws.view = ov.stage === "decided" ? "decision" : ["test_draft", "testing"].includes(ov.stage) ? "test" : "scan";
+      if (!ws.view) ws.view = ov.stage === "decided" ? "decision" : ["test_draft", "testing"].includes(ov.stage) ? "test" : ov.stage === "idea" && !review ? "review" : "scan";
     }
 
     async function refresh() { await load(); if (!dead) draw(); }
@@ -29,6 +30,7 @@
       const item = (view, label, done, disabled) => h("button", { class: done ? "done" : "", disabled, "aria-current": ws.view === view ? "step" : null,
         onclick: () => { ws.view = view; draw(); } }, h("span", { class: "pip" }, done ? "✓" : ""), label);
       return h("nav", { class: "rail", "aria-label": "Progress" },
+        item("review", "Idea review", !!ws.review, false),
         item("scan", "Risk scan", ws.risks.length > 0, false),
         item("test", "Customer test", !!locked, false),
         item("decision", "Decision", decided, !locked));
@@ -111,7 +113,8 @@
       const panel = h("section", { "aria-live": "polite" });
       root.append(panel);
 
-      if (ws.view === "scan") BZ.scanPanel(ws, panel, refresh);
+      if (ws.view === "review") BZ.reviewPanel(ws, panel, refresh);
+      else if (ws.view === "scan") BZ.scanPanel(ws, panel, refresh);
       else if (ws.view === "decision") decisionPanel(panel);
       else {
         panel.append(validationHub());

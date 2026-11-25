@@ -11,11 +11,14 @@ from ..deps import (
     get_case_repo,
     get_current_user,
     get_document_service,
+    get_idea_review_service,
     get_upload_repo,
     value_error_status,
 )
-from ..schemas import BusinessCaseCreate, BusinessCasePatch, BusinessCaseRead, DocumentRead
+from ..schemas import BusinessCaseCreate, BusinessCasePatch, BusinessCaseRead, DocumentRead, IdeaReviewRead
 from ...services.documents import DocumentService, DocumentRejection
+from ...services.errors import PROVIDER_MESSAGE, looks_like_provider_error
+from ...services.ideareview import IdeaReviewError
 
 router = APIRouter(tags=["business-cases"])
 
@@ -86,3 +89,38 @@ def list_documents(
     uploads: UploadRepository = Depends(get_upload_repo),
 ):
     return uploads.list_by_case(case.id)
+
+
+# ---- idea review (the pre-scan step) ---------------------------------------------
+
+
+@router.get("/{case_id}/idea-review", response_model=IdeaReviewRead | None)
+def get_idea_review(
+    case=Depends(get_case_or_404),
+    reviews=Depends(get_idea_review_service),
+):
+    """The stored advisory review, or null when none has been generated yet."""
+    _service, repo = reviews
+    row = repo.get_for_case(case.id)
+    return row
+
+
+@router.post("/{case_id}/idea-review", response_model=IdeaReviewRead)
+def create_idea_review(
+    case=Depends(get_case_or_404),
+    reviews=Depends(get_idea_review_service),
+):
+    """Analyze the idea write-up itself (before the risk scan) and store the
+    result. One LLM call; re-running replaces the stored review."""
+    service, repo = reviews
+    try:
+        result, meta = service.generate(case)
+    except IdeaReviewError as exc:
+        raise HTTPException(status_code=502, detail=f"Couldn't review the idea: {exc}")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"The language model is unavailable: {exc}")
+    except Exception as exc:  # noqa: BLE001 - provider/network failures must not surface as a bare 500
+        if looks_like_provider_error(exc):
+            raise HTTPException(status_code=503, detail=PROVIDER_MESSAGE)
+        raise
+    return repo.upsert(case, result, meta)

@@ -121,6 +121,14 @@ class BusinessCaseRead(BaseModel):
     updated_at: datetime
 
 
+class IdeaReviewRead(BaseModel):
+    """The advisory pre-scan review (one per case, replaced on re-run)."""
+
+    result: dict
+    meta: Optional[dict] = None
+    updated_at: datetime
+
+
 # --- hypotheses --------------------------------------------------------------
 
 class HypothesisCreate(BaseModel):
