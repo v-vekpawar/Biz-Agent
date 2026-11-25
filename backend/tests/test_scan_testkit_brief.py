@@ -153,6 +153,59 @@ def test_unexpected_crash_is_contained(scan_client, monkeypatch, auth, case_id):
     assert job["status"] == "failed" and "KeyError" in job["error"] and "secret internal detail" not in job["error"]
 
 
+def test_transient_db_error_during_verify_is_retried(scan_client, monkeypatch, auth, case_id):
+    """A database blip while checking sources must not kill the scan: the pass
+    rolls back and runs once more (hosted free-tier databases drop idle
+    connections during the long verify phase)."""
+    from sqlalchemy.exc import InternalError
+
+    client, holder = scan_client
+    holder["deps"] = install_fakes(monkeypatch)
+    from app.services import riskscan
+
+    calls = {"verify": 0}
+
+    class FlakyVerify:
+        def __init__(self, **kw): ...
+        def verify_case(self, case, ids, *, run_id=None):
+            calls["verify"] += 1
+            if calls["verify"] == 1:
+                raise InternalError("UPDATE evidence ...", None, RuntimeError("XX000 internal error"))
+            return {"results": [], "skipped": [],
+                    "summary": {"verified": 3, "indeterminate": 1, "failed": 0, "conflicts": 0}}
+
+    monkeypatch.setattr(riskscan, "VerificationService", FlakyVerify)
+    client.post(f"{API}/business-cases/{case_id}/scan", headers=auth)
+    job = client.get(f"{API}/business-cases/{case_id}/scan", headers=auth).json()["job"]
+    assert job["status"] == "completed", job["error"]
+    assert calls["verify"] == 2
+    assert "database dropped during source checking" in " ".join(job["warnings"])
+    assert any("after one retry" in entry.get("message", "") for entry in job["log"])
+
+
+def test_verify_retry_exhausted_degrades_to_a_warning(scan_client, monkeypatch, auth, case_id):
+    """If the retry also hits a database error the scan still completes: sources
+    stay unverified (the honest degraded mode), risks are still ranked."""
+    from sqlalchemy.exc import InternalError
+
+    client, holder = scan_client
+    holder["deps"] = install_fakes(monkeypatch)
+    from app.services import riskscan
+
+    class AlwaysDownVerify:
+        def __init__(self, **kw): ...
+        def verify_case(self, case, ids, *, run_id=None):
+            raise InternalError("UPDATE evidence ...", None, RuntimeError("XX000 internal error"))
+
+    monkeypatch.setattr(riskscan, "VerificationService", AlwaysDownVerify)
+    client.post(f"{API}/business-cases/{case_id}/scan", headers=auth)
+    job = client.get(f"{API}/business-cases/{case_id}/scan", headers=auth).json()["job"]
+    assert job["status"] == "completed", job["error"]
+    assert "Source checking was abandoned" in " ".join(job["warnings"])
+    risks = client.get(f"{API}/business-cases/{case_id}/risks", headers=auth).json()
+    assert risks["risks"] and risks["recommended_hypothesis_id"] is not None
+
+
 def test_only_one_active_scan_and_rescan_reuses_assumptions(scan_client, monkeypatch, auth, case_id, factory):
     from app.repositories import ScanRepository
     client, _ = scan_client
@@ -330,7 +383,7 @@ def test_brief_pdf_with_scan_and_live_sprint(scan_client, monkeypatch, auth, cas
 def test_brief_handles_unicode_and_hostile_text(client, auth):
     cid = client.post(f"{API}/business-cases", headers=auth, json={
         "title": "<b>Chai</b> & आयुर्वेद ₹499", "idea_description": "Idea with <script>alert(1)</script> & markup </para>"}).json()["id"]
-    r = client.get(f"{API}/business-cases/{cid}/brief.pdf", headers=auth)
+    r = client.get(f"{API}/business-cases/{case_id}/brief.pdf", headers=auth) if False else client.get(f"{API}/business-cases/{cid}/brief.pdf", headers=auth)
     assert r.status_code == 200
     text = pdf_text(r.content)
     assert "₹499" in text and "<script>alert(1)</script>" in text  # rendered literally, not interpreted

@@ -21,6 +21,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..domain.enums import HypothesisCategory, HypothesisOrigin, HypothesisStatus
@@ -257,28 +258,59 @@ def _run(session: Session, jobs: ScanRepository, job, deps: ScanDeps) -> None:
     if deps.fetcher is None:
         jobs.warn(job, "Source fetching isn't configured, so sources stay unverified.")
     else:
+        verifier = VerificationService(
+            verifier_llm=deps.verifier, fetcher=deps.fetcher, evidence=evidence,
+            hypotheses=hypotheses, cases=cases, runs=runs,
+        )
         try:
-            ver = VerificationService(
-                verifier_llm=deps.verifier, fetcher=deps.fetcher, evidence=evidence,
-                hypotheses=hypotheses, cases=cases, runs=runs,
-            ).verify_case(case, None, run_id=inv["run"].id)
+            ver = verifier.verify_case(case, None, run_id=inv["run"].id)
             jobs.progress(job, "verify", 78, f"Verified {ver['summary']['verified']} sources.")
         except VerifierUnavailableError as exc:
             jobs.warn(job, str(exc))
         except RuntimeError as exc:
             jobs.warn(job, f"Source checking was skipped: {exc}")
+        except DBAPIError as exc:
+            # Hosted free-tier databases (Neon on Render) can drop or blip while
+            # the verification pool runs its fetch + LLM calls for minutes with
+            # no queries in between. Roll the poisoned transaction back and run
+            # the pass once more; rows that already passed verification are
+            # skipped on a re-run by design, so no source is checked twice.
+            session.rollback()
+            jobs.warn(
+                job,
+                f"The database dropped during source checking ({type(exc).__name__}); "
+                "the pass will run once more.",
+            )
+            try:
+                ver = verifier.verify_case(case, None, run_id=inv["run"].id)
+                jobs.progress(
+                    job, "verify", 78,
+                    f"Verified {ver['summary']['verified']} sources after one retry.",
+                )
+            except (VerifierUnavailableError, DBAPIError) as exc:
+                jobs.warn(job, f"Source checking was abandoned: {exc}")
+            except RuntimeError as exc:
+                jobs.warn(job, f"Source checking was skipped: {exc}")
 
     # 4. Weigh the evidence
     jobs.progress(job, "assess", 80, "Weighing the evidence for each assumption.")
+    assessor = AssessmentService(
+        assessor_llm=deps.assessor, evidence=evidence, hypotheses=hypotheses, assessments=assessments,
+        cases=cases, runs=runs, experiments=experiments,
+    )
     try:
-        AssessmentService(
-            assessor_llm=deps.assessor, evidence=evidence, hypotheses=hypotheses, assessments=assessments,
-            cases=cases, runs=runs, experiments=experiments,
-        ).assess_case(case, None, run_id=inv["run"].id)
+        assessor.assess_case(case, None, run_id=inv["run"].id)
     except AssessmentError as exc:
         raise ScanFailure(f"Couldn't weigh the evidence: {exc}") from exc
     except RuntimeError as exc:
         raise ScanFailure(f"The language model is unavailable: {exc}") from exc
+    except DBAPIError as exc:
+        session.rollback()
+        jobs.warn(job, f"The database blipped while weighing evidence ({type(exc).__name__}); retrying once.")
+        try:
+            assessor.assess_case(case, None, run_id=inv["run"].id)
+        except (AssessmentError, RuntimeError, DBAPIError) as exc:
+            raise ScanFailure(f"Couldn't weigh the evidence: {exc}") from exc
 
     # 5. Rank
     jobs.progress(job, "rank", 95, "Ranking what is most likely to sink the idea.")
