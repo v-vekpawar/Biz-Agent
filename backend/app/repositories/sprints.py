@@ -153,13 +153,14 @@ class SprintRepository:
         return self._s.get(SprintSignup, signup_id)
 
     def record_signup(self, sprint_id: int, visitor_hash: str, email: str, answer: str | None,
-                      channel: str | None) -> tuple[SprintSignup, bool]:
+                      answers: dict | None, channel: str | None) -> tuple[SprintSignup, bool]:
         existing = self._s.scalar(
             select(SprintSignup).where(SprintSignup.sprint_id == sprint_id, SprintSignup.email == email)
         )
         if existing is not None:
             return existing, False
-        row = SprintSignup(sprint_id=sprint_id, visitor_hash=visitor_hash, email=email, answer=answer, channel=channel)
+        row = SprintSignup(sprint_id=sprint_id, visitor_hash=visitor_hash, email=email, answer=answer,
+                           answers=answers, channel=channel)
         self._s.add(row)
         try:
             self._s.commit()

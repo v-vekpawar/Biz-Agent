@@ -273,8 +273,22 @@ def delete_sprint(sprint: Sprint = Depends(get_sprint_or_404), sprints: SprintRe
 # ---- collected data -------------------------------------------------------------
 
 def _signup_dict(s) -> dict:
-    return {"id": s.id, "email": s.email, "answer": s.answer, "channel": s.channel, "created_at": s.created_at,
+    return {"id": s.id, "email": s.email, "answer": s.answer, "answers": s.answers or None,
+            "channel": s.channel, "created_at": s.created_at,
             "excluded": s.excluded_at is not None, "excluded_reason": s.excluded_reason}
+
+
+def _page_question_columns(content: dict) -> list[dict]:
+    """Column definitions for per-question views: the structured questions
+    when present, else the legacy single question."""
+    questions = (content or {}).get("questions") or []
+    if questions:
+        return [{"id": str(q.get("id")), "label": str(q.get("label", q.get("id"))), "type": q.get("type")}
+                for q in questions if isinstance(q, dict) and q.get("id")]
+    legacy = (content or {}).get("extra_question")
+    if legacy:
+        return [{"id": "legacy", "label": legacy, "type": "long_text"}]
+    return []
 
 
 @router.get("/sprints/{sprint_id}/signups")
@@ -291,9 +305,15 @@ def _csv_safe(value) -> str:
 def export_signups(sprint: Sprint = Depends(get_sprint_or_404), sprints: SprintRepository = Depends(get_sprint_repo)):
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["email", "answer", "channel", "signed_up_at_utc", "excluded", "excluded_reason"])
+    columns = _page_question_columns(sprint.content)
+    writer.writerow(["email", *["answer: " + c["label"][:80] for c in columns], "channel",
+                     "signed_up_at_utc", "excluded", "excluded_reason"])
     for s in sprints.list_signups(sprint.id):
-        writer.writerow([_csv_safe(s.email), _csv_safe(s.answer), _csv_safe(s.channel),
+        # Legacy rows keep their single answer in `answer`; structured rows
+        # answer per question in `answers`.
+        cells = [(s.answer or "") if c["id"] == "legacy" else (s.answers or {}).get(c["id"], "")
+                 for c in columns]
+        writer.writerow([_csv_safe(s.email), *[_csv_safe(x) for x in cells], _csv_safe(s.channel),
                          s.created_at.strftime("%Y-%m-%d %H:%M:%S"), "yes" if s.excluded_at else "no",
                          _csv_safe(s.excluded_reason)])
     return Response(out.getvalue(), media_type="text/csv", headers={

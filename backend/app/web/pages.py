@@ -106,29 +106,39 @@ _BASE_CSS = f"""
 .theme-paper_brass{{--page-bg:#f2ede3;--page-card:#fbf8f1;--page-text:#211d1a;--page-muted:#71695f;--page-line:rgba(33,29,26,.15);--page-accent:#a9793a;--page-accent-ink:#fff;--page-banner:#211d1a;--page-soft:#eee2cf}}
 body{{margin:0;font-family:{FONT};color:var(--page-text);background:var(--page-bg);line-height:1.55}}
 .wrap{{max-width:620px;margin:0 auto;padding:36px 20px 56px}}
-.hero{{position:relative;overflow:hidden;background:var(--page-card);border:1px solid var(--page-line);border-radius:22px;padding:clamp(24px,5vw,42px);margin-bottom:22px;box-shadow:var(--page-shadow)}}
+.hero{{position:relative;overflow:hidden;background:var(--page-card);border:1px solid var(--page-line);border-radius:22px;padding:clamp(26px,5vw,44px);margin-bottom:20px;box-shadow:var(--page-shadow)}}
+.hero:before{{content:"";position:absolute;width:340px;height:340px;border-radius:50%;left:-140px;bottom:-220px;background:var(--page-soft);opacity:.55}}
 .hero:after{{content:"";position:absolute;width:220px;height:220px;border-radius:50%;right:-95px;top:-110px;background:var(--page-soft);opacity:.9}}
-.hero-kicker{{position:relative;z-index:1;display:inline-block;font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--page-accent);margin:0 0 14px}}
+.hero-kicker{{position:relative;z-index:1;display:inline-block;font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--page-accent);margin:0 0 14px;padding:5px 10px;border:1px solid var(--page-soft);border-radius:99px;background:var(--page-card)}}
 h1{{position:relative;z-index:1;font-size:clamp(28px,6vw,43px);line-height:1.08;margin:0 0 14px;letter-spacing:-.035em;max-width:15ch}}
-.sub{{position:relative;z-index:1;font-size:18px;color:var(--page-muted);margin:0 0 18px;max-width:48ch}}
+.sub{{position:relative;z-index:1;font-size:18px;color:var(--page-muted);margin:0 0 4px;max-width:48ch}}
 .style-editorial h1{{font-family:Georgia,serif;font-weight:600;letter-spacing:-.045em}}
 .style-bold h1{{font-weight:850;letter-spacing:-.055em}}
 .style-minimal .hero{{box-shadow:none;border-radius:12px}}
 .style-playful .hero{{border-radius:30px 30px 12px 30px}}
-ul.points{{list-style:none;padding:0;margin:0 0 24px}}
-ul.points li{{padding:12px 0 12px 30px;position:relative;border-top:1px solid var(--page-line)}}
-ul.points li:last-child{{border-bottom:1px solid var(--page-line)}}
-ul.points li:before{{content:"";position:absolute;left:5px;top:20px;width:11px;height:11px;border-radius:50%;background:var(--page-accent);box-shadow:0 0 0 4px var(--page-soft)}}
-form{{background:var(--page-card);border:1px solid var(--page-line);border-radius:16px;padding:22px;box-shadow:var(--page-shadow)}}
+ul.points{{list-style:none;padding:0;margin:0 0 22px;background:var(--page-card);border:1px solid var(--page-line);border-radius:16px;overflow:hidden;box-shadow:var(--page-shadow)}}
+ul.points li{{display:flex;gap:12px;align-items:flex-start;padding:13px 18px;position:relative}}
+ul.points li + li{{border-top:1px solid var(--page-soft)}}
+ul.points li:before{{content:"";flex:none;width:16px;height:16px;margin-top:4px;border-radius:50%;background:var(--page-accent);opacity:.16}}
+ul.points li:after{{content:"";position:absolute;left:21px;top:9px;width:8px;height:5px;border-left:2px solid var(--page-accent);border-bottom:2px solid var(--page-accent);transform:rotate(-45deg)}}
+form{{background:var(--page-card);border:1px solid var(--page-line);border-radius:18px;padding:24px;box-shadow:var(--page-shadow)}}
+.form-title{{font-size:16px;font-weight:750;margin:0 0 16px}}
 label{{display:block;font-weight:650;font-size:14px;margin:0 0 6px}}
+.qlabel{{font-weight:650;font-size:14px;margin:0 0 6px}}
 input[type=email],input[type=text],textarea{{width:100%;font:inherit;padding:12px 13px;border:1px solid var(--page-line);border-radius:9px;background:var(--page-card);color:inherit}}
-input:focus,textarea:focus,button:focus-visible{{outline:3px solid var(--page-soft);outline-offset:2px}}
+input:focus,textarea:focus,button:focus-visible,.choice:focus-within{{outline:3px solid var(--page-soft);outline-offset:2px}}
 .field{{margin-bottom:16px}}
+.field .optional{{font-weight:400;color:var(--page-muted)}}
+.choices{{display:grid;gap:8px}}
+.choice{{display:flex;gap:10px;align-items:center;font-size:15px;font-weight:500;padding:11px 13px;border:1px solid var(--page-line);border-radius:10px;cursor:pointer;background:var(--page-card)}}
+.choice:hover{{border-color:var(--page-accent)}}
+.choice input{{margin:0;width:17px;height:17px;flex:none;accent-color:var(--page-accent)}}
 .consent{{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--page-muted);margin:4px 0 18px}}
-.consent input{{margin-top:3px;width:18px;height:18px;flex:none}}
-button{{font:inherit;font-weight:750;width:100%;padding:14px;border:0;border-radius:10px;background:var(--page-accent);color:var(--page-accent-ink);cursor:pointer}}
+.consent input{{margin-top:3px;width:18px;height:18px;flex:none;accent-color:var(--page-accent)}}
+button{{font:inherit;font-weight:750;width:100%;padding:15px;border:0;border-radius:11px;background:var(--page-accent);color:var(--page-accent-ink);cursor:pointer;box-shadow:0 6px 18px -8px var(--page-accent)}}
 .style-playful button{{border-radius:999px}}
-button[disabled]{{opacity:.6;cursor:not-allowed}}
+button:hover{{filter:brightness(1.06)}}
+button[disabled]{{opacity:.6;cursor:not-allowed;filter:none}}
 .msg{{margin-top:14px;font-size:15px}}.err{{color:#a43d36}}.ok{{color:#286342;font-weight:650}}
 .disclose{{margin-top:24px;font-size:13px;color:var(--page-muted)}}.disclose strong{{color:var(--page-text)}}
 .disclose a{{color:var(--page-accent)}}
@@ -157,14 +167,50 @@ def _page_shell(title: str, body: str, *, nonce: str | None = None, script: str 
     )
 
 
+def _question_fields(questions: list[dict], disabled: str) -> str:
+    """Render the page's questions: text inputs, textareas or radio pills."""
+    blocks = []
+    for question in questions:
+        qid = question["id"]
+        qtype = question.get("type") or "short_text"
+        options = question.get("options") or []
+        if qtype == "single_choice" and len(options) >= 2:
+            radios = "".join(
+                f'<label class="choice"><input type="radio" name="q_{e(qid)}" value="{e(option)}"{disabled}> {e(option)}</label>'
+                for option in options
+            )
+            # A radio group has no single input to point a <label for> at, so
+            # the group itself carries the question as its accessible name.
+            blocks.append(
+                f'<div class="field"><div class="qlabel">{e(question["label"])} <span class="optional">(optional)</span></div>'
+                f'<div class="choices" role="radiogroup" aria-label="{e(question["label"])}">{radios}</div></div>'
+            )
+        elif qtype == "long_text":
+            blocks.append(
+                f'<div class="field"><label for="q_{e(qid)}">{e(question["label"])} <span class="optional">(optional)</span></label>'
+                f'<textarea id="q_{e(qid)}" name="q_{e(qid)}" rows="3" maxlength="1000" '
+                f'placeholder="Answer in your own words (optional)"{disabled}></textarea></div>'
+            )
+        else:
+            blocks.append(
+                f'<div class="field"><label for="q_{e(qid)}">{e(question["label"])} <span class="optional">(optional)</span></label>'
+                f'<input type="text" id="q_{e(qid)}" name="q_{e(qid)}" maxlength="300" '
+                f'placeholder="Type your answer (optional)"{disabled}></div>'
+            )
+    return "".join(blocks)
+
+
 def render_public_page(sprint, content: dict[str, Any], *, nonce: str, mode: str = "live") -> str:
     """mode: live (collects data) | preview (owner draft, form disabled)."""
-    bullets = "".join(f"<li>{e(b)}</li>" for b in content["bullets"])
+    bullets = "".join(f"<li><span>{e(b)}</span></li>" for b in content["bullets"])
     sub = f'<p class="sub">{e(content["subheadline"])}</p>' if content.get("subheadline") else ""
-    extra = ""
-    if content.get("extra_question"):
-        extra = (f'<div class="field"><label for="answer">{e(content["extra_question"])} <span style="font-weight:400;color:#5E6B78">(optional)</span></label>'
-                 '<textarea id="answer" name="answer" rows="3" maxlength="1000"></textarea></div>')
+    # The page's questions: the structured list when present, else the legacy
+    # single free-text question (old locked pages keep working unchanged).
+    questions = [q for q in (content.get("questions") or [])
+                 if isinstance(q, dict) and q.get("id") and q.get("label")]
+    if not questions and content.get("extra_question"):
+        questions = [{"id": "legacy", "label": content["extra_question"], "type": "long_text", "options": []}]
+    question_html = _question_fields(questions, " disabled" if mode == "preview" else "")
     price = (f'<p class="sub" style="font-size:15px;margin:-10px 0 20px">Planned price: {e(content["price_hint"])}</p>'
              if content.get("price_hint") else "")
     disabled = " disabled" if mode == "preview" else ""
@@ -185,16 +231,17 @@ def render_public_page(sprint, content: dict[str, Any], *, nonce: str, mode: str
   <ul class="points">{bullets}</ul>
   {price}
   <form id="f" novalidate>
+    <p class="form-title">Join the waitlist</p>
     <div class="field"><label for="email">Your email</label>
       <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required maxlength="254" placeholder="you@example.com"{disabled}></div>
-    {extra}
+    {question_html}
     <div class="hp" aria-hidden="true"><label>Leave this empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label></div>
     <label class="consent"><input id="consent" type="checkbox"{disabled}><span>I agree to be contacted about this idea by email.</span></label>
     <button id="go" type="submit"{disabled}>{e(content["cta_label"])}</button>
     <div id="msg" class="msg" role="status" aria-live="polite"></div>
   </form>
   <p class="disclose"><strong>This is an early test.</strong> Nothing is for sale yet. Joining the list is not a purchase and commits you to nothing.
-  We store only your email{' and your answer' if content.get('extra_question') else ''} to contact you about this idea. To have it deleted, email
+  We store only your email{' and your answers to the questions above' if questions else ''} to contact you about this idea. To have it deleted, email
   <a href="mailto:{e(content['contact_email'])}">{e(content['contact_email'])}</a>.
   A test by {e(content['creator_name'])}.</p>
 </main>"""
@@ -219,8 +266,14 @@ def render_public_page(sprint, content: dict[str, Any], *, nonce: str, mode: str
     if(!email){msg.className='msg err';msg.textContent='Enter your email address.';return;}
     if(!consent){msg.className='msg err';msg.textContent='Please tick the box to agree to be contacted.';return;}
     btn.disabled=true;
-    var a=f.querySelector('[name=answer]');
-    post('/signup',{vid:vid,email:email,answer:a?a.value:null,consent:consent,channel:channel,website:f.website.value})
+    var answers={};
+    f.querySelectorAll('[name^=q_]').forEach(function(el){
+      if(el.type==='radio'){if(el.checked){answers[el.name.slice(2)]=el.value;}}
+      else{var v=el.value.trim();if(v){answers[el.name.slice(2)]=v;}}
+    });
+    var hasQuestions=Object.keys(answers).length>0;
+    post('/signup',{vid:vid,email:email,answer:hasQuestions?null:((f.querySelector('[name=answer]')||{}).value||null),
+      answers:hasQuestions?answers:null,consent:consent,channel:channel,website:f.website.value})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
       .then(function(r){
         if(r.ok){f.querySelectorAll('input,textarea').forEach(function(i){i.disabled=true;});btn.style.display='none';

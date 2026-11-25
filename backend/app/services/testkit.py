@@ -51,7 +51,10 @@ Hard rules:
 - Choose `visual_style` from: editorial, bold, minimal, playful. Select based on the product's personality and intended audience.
 - `hero_kicker` must be a short, truthful category label specific to this idea, not a generic slogan.
 - 3 bullets maximum on what the customer gets; each under 120 characters.
-- `extra_question` is one short optional question that reveals current behaviour (what they use today), or null.
+- `questions`: 0 to 2 short optional questions for the signup form that reveal current behaviour or intent
+  (what they use today, how often, what they'd pay for). Each has an `id` (q1, q2), a `label` under 120 chars,
+  and a `type`: "short_text", "long_text", or "single_choice" with 2-4 `options` (each under 60 chars).
+  Prefer single_choice when the interesting answers are enumerable. Return [] when no question is needed.
 - Thresholds: waitlist_conversion success_rate is the share of unique visitors who join that would make you
   keep going; failure_rate is the share below which you should stop. failure_rate < success_rate, both between
   0.01 and 0.60. Interview thresholds measure concrete commitments (pre-order, paid pilot, booked follow-up),
@@ -68,10 +71,11 @@ Respond with ONLY valid JSON, no markdown fences, no commentary:
   "audience": "who exactly should see this page",
   "page": {
     "headline": "string", "subheadline": "string or null", "bullets": ["string"],
-    "cta_label": "short button text", "extra_question": "string or null", "price_hint": "string or null",
+    "cta_label": "short button text", "price_hint": "string or null",
     "visual_theme": "one of fresh_green, midnight_blue, warm_citrus, violet_tech, earth_clay, rose_editorial, paper_brass",
     "visual_style": "one of editorial, bold, minimal, playful",
-    "hero_kicker": "short idea-specific eyebrow text, e.g. HEALTHY HOSTEL SNACKS"
+    "hero_kicker": "short idea-specific eyebrow text, e.g. HEALTHY HOSTEL SNACKS",
+    "questions": [{"id": "q1", "label": "string", "type": "short_text | long_text | single_choice", "options": ["string"]}]
   },
   "metrics": [
     {"key": "waitlist_conversion", "role": "primary", "success_rate": 0.0, "failure_rate": 0.0},
@@ -120,6 +124,34 @@ def _str_or_none(value: Any, limit: int) -> str | None:
         return None
     text = " ".join(str(value).split())
     return text[:limit] or None
+
+
+def _parse_questions(page: dict) -> list[dict]:
+    """Structured questions from the model, with the legacy `extra_question`
+    string tolerated: it becomes one long_text question."""
+    questions: list[dict] = []
+    raw = page.get("questions")
+    if isinstance(raw, list):
+        for i, item in enumerate(raw, start=1):
+            if not isinstance(item, dict):
+                continue
+            qtype = item.get("type") if item.get("type") in {"short_text", "long_text", "single_choice"} else "short_text"
+            options = [_str_or_none(o, 80) for o in (item.get("options") or []) if isinstance(o, str)]
+            options = [o for o in options if o][:5]
+            label = _str_or_none(item.get("label"), 140)
+            if not label:
+                continue
+            if qtype == "single_choice" and len(options) < 2:
+                qtype = "short_text"  # an unenumerable choice question degrades to text
+            if qtype != "single_choice":
+                options = []
+            qid = (_str_or_none(item.get("id"), 20) or f"q{i}").lower().replace("-", "_")
+            questions.append({"id": qid, "label": label, "type": qtype, "options": options})
+    if not questions:
+        legacy = _str_or_none(page.get("extra_question"), 140)
+        if legacy:
+            questions = [{"id": "q1", "label": legacy, "type": "long_text", "options": []}]
+    return questions[:3]
 
 
 def parse_kit(raw: str) -> dict[str, Any]:
@@ -175,7 +207,8 @@ def parse_kit(raw: str) -> dict[str, Any]:
             "subheadline": _str_or_none(page.get("subheadline"), 240),
             "bullets": [b for b in (_str_or_none(x, 140) for x in bullets) if b][:5],
             "cta_label": _str_or_none(page.get("cta_label"), 30) or "Join the waitlist",
-            "extra_question": _str_or_none(page.get("extra_question"), 140),
+            "extra_question": None,
+            "questions": _parse_questions(page),
             "price_hint": _str_or_none(page.get("price_hint"), 80),
             "visual_theme": page.get("visual_theme") if page.get("visual_theme") in {
                 "fresh_green", "midnight_blue", "warm_citrus", "violet_tech",

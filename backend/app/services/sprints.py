@@ -77,6 +77,50 @@ def clean_channel(value: str | None) -> str | None:
     return value or None
 
 
+MAX_ANSWER_CHARS = 1000
+
+
+def _page_questions(sprint: Sprint) -> list[dict]:
+    """The questions a page collects, as plain dicts: the structured list when
+    present, else the legacy single free-text question."""
+    questions = (sprint.content or {}).get("questions") or []
+    if questions:
+        return [q for q in questions if isinstance(q, dict) and q.get("id") and q.get("label")]
+    legacy = (sprint.content or {}).get("extra_question")
+    if legacy:
+        return [{"id": "legacy", "label": legacy, "type": "long_text", "options": []}]
+    return []
+
+
+def validate_answers(sprint: Sprint, answers: dict | None) -> dict[str, str]:
+    """Normalize and check visitor answers against the page's frozen questions.
+
+    - Unknown keys are dropped (a stale or tampered page gains nothing).
+    - single_choice answers must match one of the frozen options.
+    - Text answers are trimmed and capped; empty answers are dropped.
+    """
+    questions = _page_questions(sprint)
+    if not answers:
+        return {}
+    if not isinstance(answers, dict):
+        raise ValueError("Answers must be an object keyed by question id.")
+    by_id = {str(q["id"]): q for q in questions}
+    cleaned: dict[str, str] = {}
+    for key, value in answers.items():
+        question = by_id.get(str(key))
+        if question is None or value is None:
+            continue  # not a question this page asked
+        text = str(value).strip()[:MAX_ANSWER_CHARS]
+        if not text:
+            continue
+        if question.get("type") == "single_choice":
+            options = {str(o) for o in question.get("options") or []}
+            if text not in options:
+                raise ValueError(f"Pick one of the listed options for: {question.get('label', key)}")
+        cleaned[str(key)] = text
+    return cleaned
+
+
 NEXT_STEP = {
     Verdict.GO: (
         "The data clears the bar you set before the test. Don't celebrate yet: raise the commitment. "
@@ -152,8 +196,11 @@ class SprintService:
         return self._r.record_visit(sprint.id, visitor_hash(sprint.slug, vid), clean_channel(channel))
 
     def record_signup(self, sprint: Sprint, *, vid: str, email: str, answer: str | None, consent: bool,
-                      channel: str | None, honeypot: str | None) -> bool:
-        """True if a new signup was stored. Honeypot hits return False silently."""
+                      channel: str | None, honeypot: str | None, answers: dict | None = None) -> bool:
+        """True if a new signup was stored. Honeypot hits return False silently.
+
+        `answer` is the legacy single-question field; `answers` holds the
+        structured {question id: answer} pairs of multi-question pages."""
         if not self.accepting_data(sprint):
             raise SprintClosed("This test is not collecting responses.")
         if honeypot:
@@ -163,11 +210,18 @@ class SprintService:
         email = normalize_email(email)
         if not is_valid_email(email):
             raise ValueError("Enter a valid email address.")
-        answer = (answer or "").strip()[:1000] or None
+        questions = _page_questions(sprint)
+        if questions and questions[0].get("id") == "legacy":
+            # Legacy single-question page: keep the old `answer` column path.
+            answer = (answer or (answers or {}).get("legacy") or "").strip()[:MAX_ANSWER_CHARS] or None
+            structured = None
+        else:
+            answer = (answer or "").strip()[:MAX_ANSWER_CHARS] or None
+            structured = validate_answers(sprint, answers) or None
         vhash = visitor_hash(sprint.slug, vid)
         channel = clean_channel(channel)
         self._r.record_visit(sprint.id, vhash, channel)  # a signup is always a visit
-        _, created = self._r.record_signup(sprint.id, vhash, email, answer, channel)
+        _, created = self._r.record_signup(sprint.id, vhash, email, answer, structured, channel)
         return created
 
     # ---- evaluation -------------------------------------------------------

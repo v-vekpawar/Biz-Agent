@@ -68,7 +68,8 @@ def record_signup(slug: str, payload: SignupIn, sprints: SprintRepository = Depe
     sprint = _live_sprint(slug, sprints)
     try:
         service.record_signup(sprint, vid=payload.vid, email=payload.email, answer=payload.answer,
-                              consent=payload.consent, channel=payload.channel, honeypot=payload.website)
+                              consent=payload.consent, channel=payload.channel, honeypot=payload.website,
+                              answers=payload.answers)
     except SprintClosed as exc:
         raise HTTPException(status_code=410, detail=str(exc))
     except ValueError as exc:

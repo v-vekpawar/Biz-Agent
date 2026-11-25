@@ -7,12 +7,59 @@
     const c = ws.case, u = BZ.user() || {};
     const audience = c.target_customer || "People who have this problem";
     return {
-      content: { headline: c.title, subheadline: "", bullets: [""], cta_label: "Join the waitlist", extra_question: "", price_hint: c.pricing_model || "",
+      content: { headline: c.title, subheadline: "", bullets: [""], cta_label: "Join the waitlist", questions: [], price_hint: c.pricing_model || "",
         visual_theme: "paper_brass", visual_style: "editorial", hero_kicker: c.title.toUpperCase().slice(0, 70),
         creator_name: u.display_name || "", contact_email: u.email || "" },
       protocol: { claim: "At least 10% of " + audience + " who see this page will join the waitlist.", audience, traffic_plan: "",
         confidence: 0.9, deadline: addDays(14),
         metrics: [{ key: "waitlist_conversion", role: "primary", success_rate: 0.10, failure_rate: 0.03, min_sample: 100 }] },
+    };
+  }
+
+  const QTYPE = [["short_text", "Short text"], ["long_text", "Long text"], ["single_choice", "One choice"]];
+
+  /** Builder for the page's questions (up to 3, all optional for visitors). */
+  function questionBuilder(initial) {
+    const rows = (initial || []).map((q) => ({ ...q }));
+    const wrap = h("div");
+    const addBtn = h("button", { class: "btn quiet small", type: "button" }, "+ Add a question");
+
+    function draw() {
+      BZ.clear(wrap);
+      rows.forEach((row, i) => {
+        const label = h("input", { type: "text", value: row.label || "", maxLength: 140, placeholder: "e.g. What do you use at work today?", "aria-label": "Question " + (i + 1) });
+        const type = h("select", { "aria-label": "Question " + (i + 1) + " type" }, QTYPE.map(([v, l]) => h("option", { value: v, selected: (row.type || "short_text") === v }, l)));
+        const optInput = h("input", { type: "text", value: (row.options || []).join(", "), maxLength: 400, placeholder: "Options, separated by commas", "aria-label": "Question " + (i + 1) + " options" });
+        const optBox = h("div", { class: row.type === "single_choice" ? "" : "hidden" }, optInput);
+        label.oninput = () => { row.label = label.value; };
+        type.onchange = () => { row.type = type.value; optBox.classList.toggle("hidden", type.value !== "single_choice"); };
+        optInput.oninput = () => { row.options = optInput.value.split(",").map((s) => s.trim()).filter(Boolean); };
+        wrap.append(h("div", { class: "qrow", "data-i": String(i) },
+          h("div", { class: "spread", style: { marginBottom: "6px" } },
+            h("span", { class: "muted tiny" }, "Question " + (i + 1)),
+            h("button", { class: "btn quiet small", type: "button", onclick: () => { rows.splice(i, 1); draw(); } }, "Remove")),
+          h("div", { class: "row" }, h("div", {}, label), h("div", { style: { maxWidth: "150px" } }, type)),
+          optBox));
+      });
+      addBtn.disabled = rows.length >= 3;
+      wrap.append(addBtn, h("p", { class: "hint", style: { margin: "8px 0 0" } },
+        "All questions are optional for visitors. One-choice questions give you clean counts; text questions give you quotes."));
+    }
+    addBtn.onclick = () => { if (rows.length < 3) { rows.push({ id: "q" + (rows.length + 1), label: "", type: "short_text", options: [] }); draw(); wrap.querySelector("[data-i='" + (rows.length - 1) + "'] input") && wrap.querySelectorAll("input[type=text]")[rows.length - 1].focus(); } };
+    draw();
+    return {
+      el: wrap,
+      collect() {
+        const out = [];
+        rows.forEach((row, i) => {
+          const label = (row.label || "").trim();
+          if (!label) return;
+          const type = row.type === "single_choice" ? "single_choice" : row.type === "long_text" ? "long_text" : "short_text";
+          const options = [...new Set((row.options || []).map((o) => o.trim()).filter(Boolean))].slice(0, 5);
+          out.push({ id: "q" + (i + 1), label, type, options: type === "single_choice" ? options : [] });
+        });
+        return out;
+      },
     };
   }
 
@@ -63,7 +110,10 @@
     f.sub = txt("sub", c0.subheadline, 240);
     f.bullets = area("bullets", (c0.bullets || []).join("\n"), 4, 760);
     f.cta = txt("cta", c0.cta_label, 30);
-    f.q = txt("q", c0.extra_question, 140, "e.g. What do you use today?");
+    f.questions = questionBuilder(
+      (c0.questions && c0.questions.length) ? c0.questions
+        : c0.extra_question ? [{ id: "q1", label: c0.extra_question, type: "long_text", options: [] }]
+        : []);
     f.price = txt("price", c0.price_hint, 80, "Optional. Leave empty to show no price.");
     f.kicker = txt("kicker", c0.hero_kicker, 70, "Short category / product label");
     const themeOptions = [
@@ -113,9 +163,13 @@
       const metrics = [{ key: "waitlist_conversion", role: "primary", success_rate: Number(f.s1.value) / 100, failure_rate: Number(f.f1.value) / 100, min_sample: Number(f.n1.value) }];
       if (f.useSupport.checked) metrics.push({ key: "interview_commitment", role: "supporting", success_rate: Number(f.s2.value) / 100, failure_rate: Number(f.f2.value) / 100, min_sample: Number(f.n2.value) });
       const nz = (v) => (v.trim() ? v.trim() : null);
+      const questions = f.questions.collect();
+      const badChoice = questions.find((q) => q.type === "single_choice" && q.options.length < 2);
+      if (badChoice) throw new Error('Question "' + badChoice.label + '" needs at least two options.');
       return {
         content: { headline: f.headline.value.trim(), subheadline: nz(f.sub.value), bullets: f.bullets.value.split("\n").map((l) => l.trim()).filter(Boolean),
-          cta_label: f.cta.value.trim() || "Join the waitlist", extra_question: nz(f.q.value), price_hint: nz(f.price.value),
+          cta_label: f.cta.value.trim() || "Join the waitlist", extra_question: null, questions,
+          price_hint: nz(f.price.value),
           visual_theme: f.theme.value, visual_style: f.style.value, hero_kicker: nz(f.kicker.value),
           creator_name: f.creator.value.trim(), contact_email: f.contact.value.trim() },
         protocol: { claim: f.claim.value.trim(), audience: f.audience.value.trim(), traffic_plan: nz(f.traffic.value), confidence: Number(f.conf.value),
@@ -161,8 +215,8 @@
       h("div", { class: "sheet" }, h("h3", { style: { marginBottom: "12px" } }, "What the public page says"),
         field("headline", "Headline", f.headline), field("sub", "Subheadline (optional)", f.sub),
         field("bullets", "What the customer gets (one per line, up to 5)", f.bullets),
-        h("div", { class: "row" }, field("cta", "Button text", f.cta), field("q", "One optional question for visitors", f.q)),
-        field("price", "Price shown", f.price, "Only show a price you are really considering."),
+        h("div", { class: "row" }, field("cta", "Button text", f.cta), field("price", "Price shown", f.price, "Only show a price you are really considering.")),
+        h("div", { class: "field" }, h("label", {}, "Questions for visitors (up to 3)"), f.questions.el),
         field("kicker", "Small category label", f.kicker, "For example: HEALTHY HOSTEL SNACKS."),
         h("div", { class: "row" }, field("visual-theme", "Visual palette", f.theme), field("visual-style", "Layout style", f.style)),
         h("div", { class: "row" }, field("creator", "Your name (public)", f.creator), field("contact", "Contact email (public)", f.contact, "Visitors use this to ask you to delete their data."))));

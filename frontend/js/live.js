@@ -66,11 +66,47 @@
 
     const loadLists = async () => {
       const [signups, signals] = await Promise.all([BZ.api("/sprints/" + s.id + "/signups"), BZ.api("/sprints/" + s.id + "/signals")]);
-      BZ.clear(signupsBox).append(signups.length ? h("table", { class: "t" },
-        h("thead", {}, h("tr", {}, h("th", {}, "Email"), h("th", {}, "Answer"), h("th", {}, "Source"), h("th", {}, "When"), h("th", {}, ""))),
-        h("tbody", {}, signups.map((r) => h("tr", { class: r.excluded ? "excluded" : "" }, h("td", {}, r.email), h("td", {}, r.answer || ""), h("td", {}, r.channel || "direct"), h("td", {}, BZ.date(r.created_at)),
-          h("td", {}, r.excluded ? h("span", { class: "muted tiny" }, "excluded: " + r.excluded_reason) : (open ? h("button", { class: "btn quiet small", onclick: () => excludeModal("Exclude this signup", "/sprints/" + s.id + "/signups/" + r.id + "/exclude") }, "Exclude") : null))))))
-        : h("p", { class: "muted small" }, "No signups yet."));
+      // The page's questions drive the results columns (structured first, then
+      // the legacy single question, then nothing).
+      const questions = (s.content && s.content.questions && s.content.questions.length) ? s.content.questions
+        : (s.content && s.content.extra_question) ? [{ id: "legacy", label: s.content.extra_question, type: "long_text" }] : [];
+      const answer = (r, q) => (r.answers || {})[q.id] || (q.id === "legacy" ? r.answer : "") || "";
+
+      // Choice distributions (counts per option) above the signups table.
+      const distributions = questions.filter((q) => q.type === "single_choice").map((q) => {
+        const counts = {};
+        let answered = 0;
+        signups.forEach((r) => {
+          if (r.excluded) return;
+          const a = answer(r, q);
+          if (a) { counts[a] = (counts[a] || 0) + 1; answered += 1; }
+        });
+        const options = [...new Set([...(q.options || []), ...Object.keys(counts)])];
+        return h("div", { class: "qdist" },
+          h("div", { class: "muted small", style: { marginBottom: "4px" } }, q.label,
+            answered ? " · " + BZ.pluralize(answered, "answer") : " · no answers yet"),
+          h("div", { class: "qdist-bars" }, options.map((o) => {
+            const n = counts[o] || 0;
+            const pctOf = answered ? Math.round(100 * n / answered) : 0;
+            return h("div", { class: "qdist-row" },
+              h("span", { class: "qdist-label", title: o }, o),
+              h("span", { class: "qdist-track" }, h("i", { style: { width: pctOf + "%" } })),
+              h("b", {}, String(n)));
+          })));
+      });
+
+      BZ.clear(signupsBox).append(
+        distributions.length ? h("div", { class: "qdists" }, distributions) : null,
+        signups.length ? h("table", { class: "t" },
+          h("thead", {}, h("tr", {}, h("th", {}, "Email"),
+            questions.map((q) => h("th", {}, q.label)),
+            h("th", {}, "Source"), h("th", {}, "When"), h("th", {}, ""))),
+          h("tbody", {}, signups.map((r) => h("tr", { class: r.excluded ? "excluded" : "" },
+            h("td", {}, r.email),
+            questions.map((q) => h("td", {}, answer(r, q))),
+            h("td", {}, r.channel || "direct"), h("td", {}, BZ.date(r.created_at)),
+            h("td", {}, r.excluded ? h("span", { class: "muted tiny" }, "excluded: " + r.excluded_reason) : (open ? h("button", { class: "btn quiet small", onclick: () => excludeModal("Exclude this signup", "/sprints/" + s.id + "/signups/" + r.id + "/exclude") }, "Exclude") : null))))))
+          : h("p", { class: "muted small" }, "No signups yet."));
       BZ.clear(signalsBox).append(signals.length ? h("table", { class: "t" },
         h("thead", {}, h("tr", {}, h("th", {}, "Outcome"), h("th", {}, "Who"), h("th", {}, "Notes"), h("th", {}, ""))),
         h("tbody", {}, signals.map((r) => h("tr", { class: r.excluded ? "excluded" : "" }, h("td", {}, OUTCOME[r.outcome]), h("td", {}, r.who || ""), h("td", {}, r.notes || ""),

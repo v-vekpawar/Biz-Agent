@@ -216,3 +216,14 @@ iframe.preview{width:100%;height:640px;border:1px solid var(--line);border-radiu
 .pri-later{background:var(--slate-wash);color:var(--slate)}
 .decision-title{font-weight:650;font-size:16px;line-height:1.35}
 .decision p{margin:0}
+
+
+/* v5.1 Multi-question test pages: builder rows + answer distributions */
+.qrow{border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:10px;background:#fffdf8}
+.qdists{display:grid;gap:16px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line-soft)}
+.qdist-bars{display:grid;gap:5px}
+.qdist-row{display:grid;grid-template-columns:minmax(90px,220px) 1fr 28px;gap:10px;align-items:center;font-size:13.5px}
+.qdist-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--slate)}
+.qdist-track{display:block;height:9px;border-radius:99px;background:var(--line-soft);overflow:hidden}
+.qdist-track i{display:block;height:100%;background:var(--cobalt);border-radius:99px;transition:width .4s ease}
+.qdist-row b{text-align:right;font-weight:650}

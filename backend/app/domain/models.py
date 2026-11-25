@@ -460,7 +460,11 @@ class SprintSignup(Base):
     sprint_id: Mapped[int] = mapped_column(ForeignKey("sprints.id", ondelete="CASCADE"), index=True, nullable=False)
     visitor_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     email: Mapped[str] = mapped_column(String(254), nullable=False)
+    # Legacy single free-text answer (pages built before structured questions).
     answer: Mapped[str | None] = mapped_column(Text)
+    # Structured answers keyed by the page's frozen question ids:
+    # {"q1": "text", "q2": "Option A"}. Frozen with the page content at lock.
+    answers: Mapped[dict | None] = mapped_column(JSON)
     channel: Mapped[str | None] = mapped_column(String(50))
     excluded_at: Mapped[_dt.datetime | None] = mapped_column(DateTime(timezone=True))
     excluded_reason: Mapped[str | None] = mapped_column(String(300))
